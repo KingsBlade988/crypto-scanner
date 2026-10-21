@@ -1,0 +1,3221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base href="/crypto-scanner/">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0d12">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
+<title>Crypto Scanner</title>
+<style>
+  :root {
+    --bg: #0a0d12; --surface: #131720; --surface-2: #1a1f2b;
+    --border: #222838; --border-soft: #1a1f2b;
+    --text: #e8eaed; --muted: #8a94a6; --dim: #5a6577;
+    --blue: #3b82f6; --green: #22c55e; --red: #ef4444; --amber: #f59e0b;
+    --radius: 14px; --radius-sm: 10px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.45;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header { padding: 20px 18px 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  header h1 { font-size: 1.1rem; font-weight: 700; margin: 0; letter-spacing: -0.2px; }
+  header .sub { font-size: 0.75rem; color: var(--muted); margin-top: 3px; }
+  #refreshBtn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    width: 38px; height: 38px; border-radius: 50%; font-size: 17px;
+    display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0;
+  }
+  #refreshBtn:active { background: var(--surface-2); }
+  #refreshBtn:disabled { opacity: 0.45; }
+  #refreshBtn.spin { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  main { padding: 0 18px 100px; min-height: 60vh; }
+  .view { display: none; }
+  .view.active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  #status { font-size: 0.72rem; color: var(--dim); text-align: center; padding: 4px 0 14px; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 14px; scrollbar-width: none; margin: 0 -18px; padding-left: 18px; padding-right: 18px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; padding: 8px 14px; border-radius: 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--muted); font-size: 0.82rem; font-weight: 500;
+    white-space: nowrap; transition: all 0.15s;
+  }
+  .chip.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+  .search-wrap { position: relative; margin-bottom: 14px; }
+  .search-wrap input {
+    width: 100%; padding: 11px 14px 11px 38px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    font-size: 0.9rem; font-family: inherit;
+  }
+  .search-wrap input::placeholder { color: var(--dim); }
+  .search-wrap::before {
+    content: '🔍'; position: absolute; left: 13px; top: 50%;
+    transform: translateY(-50%); font-size: 0.85rem; opacity: 0.5; pointer-events: none;
+  }
+  .coin-card {
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 10px;
+    transition: border-color 0.15s; overflow: hidden;
+  }
+  .coin-card.highlight { border-color: var(--blue); }
+  .coin-card .top { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+  .coin-card .info { flex: 1; min-width: 0; }
+  .coin-card .name { font-size: 1rem; font-weight: 700; letter-spacing: -0.1px; }
+  .coin-card .symbol { font-size: 0.75rem; color: var(--muted); margin-top: 2px; letter-spacing: 0.3px; }
+  .coin-card .right { text-align: right; flex-shrink: 0; }
+  .coin-card .price { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.2px; }
+  .coin-card .change { font-size: 0.82rem; font-weight: 600; margin-top: 2px; }
+  .up { color: var(--green); } .down { color: var(--red); } .flat { color: var(--muted); }
+  .coin-card .metrics { display: flex; gap: 16px; font-size: 0.78rem; color: var(--muted); margin-bottom: 12px; flex-wrap: wrap; }
+  .coin-card .metrics span { color: var(--text); font-weight: 600; }
+
+  .verdict-banner {
+    margin: -16px -16px 12px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 0.88rem;
+    letter-spacing: 0.3px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .verdict-banner.trade { background: rgba(34,197,94,0.15); color: #4ade80; }
+  .verdict-banner.skip { background: rgba(239,68,68,0.12); color: #fca5a5; }
+  .verdict-banner.loading { background: var(--surface-2); color: var(--muted); }
+  .verdict-label { font-size: 0.95rem; }
+  .verdict-reason { font-size: 0.72rem; font-weight: 500; opacity: 0.85; text-align: right; }
+
+  .gate-banner {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; margin-bottom: 14px;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem; line-height: 1.5;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .gate-banner.warn {
+    border-color: rgba(245,158,11,0.4);
+    background: rgba(245,158,11,0.08);
+    color: #fbbf24;
+  }
+  .gate-banner .gate-icon { font-size: 1.2rem; flex-shrink: 0; }
+  .gate-banner .gate-text { flex: 1; min-width: 0; }
+
+  .star-btn {
+    width: 32px; height: 32px; padding: 0;
+    background: transparent; border: none;
+    color: var(--muted); font-size: 1.15rem; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0.7;
+    transition: opacity 0.15s, color 0.15s, transform 0.1s;
+    flex-shrink: 0; margin-top: -2px;
+    border-radius: 50%;
+    font-family: inherit;
+  }
+  .star-btn:active { transform: scale(0.85); }
+  .star-btn.watched { opacity: 1; color: #fbbf24; text-shadow: 0 0 8px rgba(251,191,36,0.35); }
+
+  .sig-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+  .sig-badge { font-size: 0.72rem; padding: 4px 10px; border-radius: 6px; font-weight: 700; letter-spacing: 0.2px; }
+  .sig-badge.momentum { background: rgba(245,158,11,0.14); color: #fbbf24; }
+  .sig-badge.momentum-strong { background: rgba(249,115,22,0.22); color: #fb923c; box-shadow: 0 0 10px rgba(251,146,60,0.2); }
+  .sig-badge.pullback { background: rgba(59,130,246,0.14); color: #60a5fa; }
+  .trend-pill { font-size: 0.68rem; padding: 3px 8px; border-radius: 5px; font-weight: 700; letter-spacing: 0.3px; opacity: 0.85; }
+  .trend-pill.up { background: rgba(34,197,94,0.12); color: #4ade80; }
+  .trend-pill.down { background: rgba(239,68,68,0.12); color: #f87171; }
+  .trend-pill.neutral { background: rgba(138,148,166,0.12); color: #8a94a6; }
+
+  .chance-block {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; margin: 8px 0 10px;
+    background: var(--bg); border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .chance-num { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.8px; line-height: 1; }
+  .chance-label { font-size: 0.72rem; color: var(--muted); }
+  .chance-label b { font-weight: 700; }
+
+  .parabolic-strip {
+    margin: -16px -16px 12px; padding: 8px 16px;
+    background: rgba(239,68,68,0.12); color: #fca5a5;
+    font-size: 0.72rem; font-weight: 600;
+    border-bottom: 1px solid rgba(239,68,68,0.25);
+  }
+  .broken-strip {
+    margin: -16px -16px 12px; padding: 8px 16px;
+    background: rgba(239,68,68,0.09); color: #fca5a5;
+    font-size: 0.72rem; font-weight: 600;
+    border-bottom: 1px solid rgba(239,68,68,0.2);
+  }
+  .broken-strip + .broken-strip {
+    margin-top: -12px;
+  }
+
+  .tag { font-size: 0.68rem; padding: 3px 9px; border-radius: 6px; font-weight: 600; letter-spacing: 0.2px; }
+  .tag.momentum { background: rgba(245,158,11,0.12); color: #fbbf24; }
+  .tag.pullback { background: rgba(59,130,246,0.12); color: #60a5fa; }
+  .tag.win { background: rgba(34,197,94,0.12); color: #4ade80; }
+  .tag.loss { background: rgba(239,68,68,0.12); color: #f87171; }
+  .tag.open { background: rgba(245,158,11,0.12); color: #fbbf24; }
+  .tag.near-stop { background: rgba(239,68,68,0.15); color: #f87171; }
+  .tag.near-target { background: rgba(34,197,94,0.15); color: #4ade80; }
+  .tag.editing { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .tag.stable { background: rgba(138,148,166,0.15); color: #8a94a6; }
+
+  .score-row { display: flex; align-items: center; gap: 10px; }
+  .score-row .num { font-size: 0.72rem; color: var(--muted); min-width: 32px; font-weight: 600; }
+  .score-bar { flex: 1; height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+  .empty { text-align: center; padding: 50px 20px; color: var(--muted); font-size: 0.88rem; line-height: 1.6; }
+  .empty .emoji { font-size: 2rem; display: block; margin-bottom: 12px; opacity: 0.6; }
+  .banner {
+    background: var(--surface); border-left: 3px solid var(--blue);
+    border-radius: 8px; padding: 12px 14px; font-size: 0.8rem;
+    color: var(--muted); line-height: 1.55; margin-bottom: 14px;
+  }
+  .banner b { color: var(--text); }
+
+  .verdict-card {
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .verdict-card.green { border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.06); }
+  .verdict-card.yellow { border-color: rgba(245,158,11,0.45); background: rgba(245,158,11,0.06); }
+  .verdict-card.red { border-color: rgba(239,68,68,0.5); background: rgba(239,68,68,0.07); }
+  .verdict-card.loading { opacity: 0.7; }
+
+  .verdict-head {
+    padding: 14px 16px;
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .verdict-icon { font-size: 1.9rem; line-height: 1; flex-shrink: 0; }
+  .verdict-body { flex: 1; min-width: 0; }
+  .verdict-title { font-size: 1rem; font-weight: 800; letter-spacing: -0.2px; margin-bottom: 2px; }
+  .verdict-card.green .verdict-title { color: #4ade80; }
+  .verdict-card.yellow .verdict-title { color: #fbbf24; }
+  .verdict-card.red .verdict-title { color: #f87171; }
+  .verdict-card.loading .verdict-title { color: var(--muted); }
+  .verdict-sub { font-size: 0.76rem; color: var(--muted); line-height: 1.45; }
+  .verdict-chevron { font-size: 0.85rem; color: var(--muted); flex-shrink: 0; transition: transform 0.2s; }
+  .verdict-card.expanded .verdict-chevron { transform: rotate(180deg); }
+
+  .verdict-reasons { display: none; padding: 0 16px 14px; border-top: 1px solid rgba(255,255,255,0.05); }
+  .verdict-card.expanded .verdict-reasons { display: block; padding-top: 12px; }
+  .verdict-reason-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; font-size: 0.78rem; line-height: 1.5; color: #c8d0dc; }
+  .verdict-reason-row .r-icon { flex-shrink: 0; font-size: 0.85rem; width: 16px; text-align: center; }
+  .verdict-reason-row .r-text { flex: 1; min-width: 0; }
+  .verdict-reason-row .r-text b { color: var(--text); }
+  .verdict-note { margin-top: 10px; font-size: 0.68rem; color: var(--dim); font-style: italic; text-align: center; }
+
+  .market-banner {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: var(--radius-sm);
+    margin-bottom: 14px; font-size: 0.82rem; line-height: 1.5;
+    border: 1px solid var(--border); background: var(--surface);
+  }
+  .market-banner .icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; }
+  .market-banner .body { flex: 1; min-width: 0; }
+  .market-banner .title { font-weight: 700; font-size: 0.88rem; margin-bottom: 2px; }
+  .market-banner .desc { color: var(--muted); font-size: 0.75rem; }
+  .market-banner.bull { border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.06); }
+  .market-banner.bull .title { color: #4ade80; }
+  .market-banner.bear { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.06); }
+  .market-banner.bear .title { color: #f87171; }
+  .market-banner.neutral .title { color: #fbbf24; }
+
+  .tf-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .tf-label { font-size: 0.75rem; color: var(--muted); }
+  .tf-toggle { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .tf-btn { padding: 10px 20px; font-size: 0.82rem; font-weight: 700; background: transparent; color: var(--muted); border: none; cursor: pointer; letter-spacing: 0.3px; font-family: inherit; min-width: 56px; -webkit-tap-highlight-color: rgba(59,130,246,0.2); }
+  .tf-btn.active { background: var(--blue); color: #fff; }
+
+  .section-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dim); margin: 22px 0 10px; }
+  .section-header { display: flex; justify-content: space-between; align-items: center; margin: 22px 0 10px; gap: 10px; }
+  .section-header .section-title { margin: 0; }
+  .section-header button { padding: 6px 12px; font-size: 0.72rem; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); font-weight: 600; }
+  .section-header button:active { background: var(--surface); }
+  .section-header button.danger { color: #f87171; }
+  .section-header button.danger:active { background: rgba(239,68,68,0.1); }
+  .block { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+  .block h3 { font-size: 0.9rem; margin: 0 0 14px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  .block h3 .hint { font-size: 0.72rem; color: var(--dim); font-weight: 400; }
+  input[type="text"], input[type="number"], select, textarea {
+    width: 100%; padding: 11px 13px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font-size: 0.92rem; font-family: inherit; transition: border-color 0.15s;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); }
+  textarea { resize: vertical; min-height: 60px; }
+  label { display: block; font-size: 0.72rem; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  .field { margin-bottom: 12px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button { padding: 12px 16px; border: none; border-radius: var(--radius-sm); background: var(--blue); color: #fff; font-weight: 600; font-size: 0.9rem; font-family: inherit; transition: opacity 0.15s; }
+  button:active { opacity: 0.85; }
+  button.ghost { background: var(--surface-2); color: var(--text); }
+  button.green { background: var(--green); }
+  button.full { width: 100%; }
+  button.small { padding: 8px 12px; font-size: 0.78rem; }
+  .preview { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin: 12px 0; font-size: 0.82rem; line-height: 1.7; color: var(--muted); }
+  .preview b { color: var(--text); }
+  .preview .green { color: var(--green); font-weight: 600; }
+  .preview .red { color: var(--red); font-weight: 600; }
+  .trade { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; position: relative; cursor: pointer; transition: border-color 0.15s; }
+  .trade:active { border-color: var(--blue); }
+  .trade.near-stop { border-color: rgba(239,68,68,0.4); }
+  .trade.near-target { border-color: rgba(34,197,94,0.4); }
+  .trade.editing { border-color: var(--blue); cursor: default; }
+  .trade.closed { opacity: 0.85; }
+  .trade .row1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+  .trade .pair { font-size: 0.95rem; font-weight: 700; margin-right: 6px; }
+  .trade .pnl { font-weight: 700; font-size: 0.92rem; text-align: right; }
+  .trade .details { font-size: 0.75rem; color: var(--muted); line-height: 1.65; }
+  .trade .details .lbl { color: var(--dim); }
+  .trade .details .units { color: var(--text); font-weight: 600; }
+  .trade .details .closed-time { color: #b8c1d1; font-weight: 600; }
+  .trade .details .closed-method { font-weight: 700; }
+  .trade .details .closed-method.auto-stop { color: var(--red); }
+  .trade .details .closed-method.auto-target { color: var(--green); }
+  .trade .details .closed-method.manual { color: #60a5fa; }
+  .trade .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .trade .actions button { font-size: 0.75rem; padding: 7px 14px; }
+  .trade .del { position: absolute; top: 8px; right: 8px; background: transparent; border: none; color: var(--dim); font-size: 14px; padding: 6px; width: auto; opacity: 0.5; }
+  .trade .del:active { opacity: 1; color: var(--red); }
+  .close-form, .edit-form { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); cursor: default; }
+  .close-form label, .edit-form label { margin-bottom: 8px; }
+  .close-form input { margin-bottom: 8px; }
+  .form-actions { display: flex; gap: 8px; }
+  .form-actions button { flex: 1; }
+  .del-confirm { margin-top: 10px; padding: 10px 12px; background: rgba(239,68,68,0.08); border-radius: 8px; display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--muted); cursor: default; }
+  .del-confirm span { flex: 1; }
+  .del-confirm button { padding: 6px 10px; font-size: 0.72rem; }
+  .bulk-confirm { margin: 10px 0 0; padding: 12px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3); border-radius: var(--radius-sm); font-size: 0.82rem; color: var(--text); line-height: 1.5; }
+  .bulk-confirm .bulk-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .bulk-confirm .bulk-actions button { flex: 1; padding: 8px; font-size: 0.78rem; }
+  .stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .stat { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px 10px; text-align: center; }
+  .stat .val { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.3px; }
+  .stat .lbl { font-size: 0.6rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; font-weight: 600; }
+  .insight { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 16px; font-size: 0.85rem; line-height: 1.7; color: #b8c1d1; margin-bottom: 14px; }
+  .insight .title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dim); font-weight: 700; margin-bottom: 10px; }
+  .insight b { color: var(--text); }
+  .insight .good { color: var(--green); font-weight: 600; }
+  .insight .bad { color: var(--red); font-weight: 600; }
+  .insight .hl { color: #60a5fa; font-weight: 600; }
+  .insight .warn { color: #fbbf24; font-weight: 600; }
+  .portfolio-panel { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .portfolio-panel .title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dim); font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+  .portfolio-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.82rem; border-bottom: 1px solid var(--border-soft); }
+  .portfolio-row:last-child { border-bottom: none; }
+  .portfolio-row .k { color: var(--muted); }
+  .portfolio-row .v { font-weight: 600; }
+  .portfolio-bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .portfolio-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+  .portfolio-warn { padding: 10px 12px; background: rgba(245,158,11,0.08); border-left: 3px solid var(--amber); border-radius: 6px; font-size: 0.78rem; color: #e8eaed; line-height: 1.55; margin-top: 10px; }
+  .portfolio-warn.danger { background: rgba(239,68,68,0.08); border-left-color: var(--red); }
+  .bd-row { display: flex; justify-content: space-between; padding: 9px 0; font-size: 0.82rem; border-bottom: 1px solid var(--border-soft); }
+  .bd-row:last-child { border-bottom: none; }
+  .bd-row .k { color: var(--muted); }
+  .bd-row .v { font-weight: 600; text-align: right; }
+  .switch-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border-soft); gap: 14px; }
+  .switch-row:last-child { border-bottom: none; }
+  .switch-row .txt { flex: 1; min-width: 0; }
+  .switch-row .label { font-size: 0.9rem; color: var(--text); font-weight: 500; }
+  .switch-row .desc { font-size: 0.72rem; color: var(--dim); margin-top: 3px; }
+  .switch { position: relative; width: 44px; height: 26px; background: var(--surface-2); border-radius: 13px; flex-shrink: 0; transition: background 0.2s; cursor: pointer; }
+  .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; background: #fff; border-radius: 50%; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .switch.on { background: var(--blue); }
+  .switch.on::after { left: 21px; }
+  .switch:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+  .perm-pill { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; margin-left: 8px; }
+  .perm-granted { background: rgba(34,197,94,0.15); color: #4ade80; }
+  .perm-denied { background: rgba(239,68,68,0.15); color: #f87171; }
+  .perm-default { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .log-item { padding: 12px; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--blue); margin-bottom: 8px; font-size: 0.8rem; line-height: 1.5; color: var(--muted); }
+  .log-item.win { border-left-color: var(--green); }
+  .log-item.loss { border-left-color: var(--red); }
+  .log-item.warn { border-left-color: var(--amber); }
+  .log-item.setup { border-left-color: #a855f7; }
+  .log-item .title { color: var(--text); font-weight: 600; }
+  .log-item .time { font-size: 0.68rem; color: var(--dim); margin-top: 4px; }
+  #alertBanner { position: fixed; top: 12px; left: 12px; right: 12px; padding: 14px 16px; color: #fff; font-size: 0.85rem; font-weight: 600; text-align: center; z-index: 9999; border-radius: var(--radius); line-height: 1.4; box-shadow: 0 6px 24px rgba(0,0,0,0.4); transform: translateY(calc(-100% - 24px)); opacity: 0; pointer-events: none; transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.25s; }
+  #alertBanner.show { transform: translateY(0); opacity: 1; }
+  #alertBanner.win { background: #16a34a; }
+  #alertBanner.loss { background: #dc2626; }
+  #alertBanner.warn { background: #d97706; }
+  #alertBanner.info { background: var(--blue); }
+  #alertBanner.setup { background: #7c3aed; }
+  nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); display: flex; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); z-index: 100; backdrop-filter: blur(12px); }
+  nav button { flex: 1; background: transparent; border: none; padding: 8px 4px; border-radius: var(--radius-sm); color: var(--dim); font-size: 0.68rem; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 3px; letter-spacing: 0.3px; position: relative; }
+  nav button .ico { font-size: 1.15rem; line-height: 1; }
+  nav button.active { color: var(--blue); background: rgba(59,130,246,0.08); }
+  nav button .badge-dot { position: absolute; top: 6px; right: 24%; width: 7px; height: 7px; background: var(--red); border-radius: 50%; border: 2px solid var(--surface); }
+  nav button .badge-dot.hidden { display: none; }
+  .hidden { display: none !important; }
+  .detail-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+  .detail-header .back-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); width: 38px; height: 38px; border-radius: 50%; padding: 0; font-size: 18px; flex-shrink: 0; }
+  .detail-header .info { flex: 1; min-width: 0; }
+  .detail-header .info .name { font-size: 1.05rem; font-weight: 700; }
+  .detail-header .info .symbol { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+  .detail-header .right { text-align: right; }
+  .detail-header .right .price { font-size: 1.05rem; font-weight: 700; }
+  .detail-header .right .change { font-size: 0.8rem; font-weight: 600; margin-top: 2px; }
+  .period-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .period-tabs button { flex: 1; padding: 8px 0; font-size: 0.78rem; background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-sm); font-weight: 600; }
+  .period-tabs button.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  #chartContainer { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 8px; margin-bottom: 14px; min-height: 400px; position: relative; }
+  #chartContainer .chart-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 0.85rem; pointer-events: none; }
+  .legend { display: flex; gap: 14px; font-size: 0.72rem; color: var(--muted); margin-bottom: 12px; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 5px; }
+  .legend .swatch { width: 12px; height: 3px; border-radius: 2px; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; }
+  .modal-content { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; max-width: 400px; width: 100%; }
+  .modal-content h3 { margin: 0 0 8px; font-size: 1rem; }
+</style>
+</head>
+<body>
+
+<div id="alertBanner"></div>
+
+<header>
+  <div>
+    <h1>Crypto Scanner</h1>
+    <div class="sub" id="status">Loading…</div>
+  </div>
+  <button id="refreshBtn" aria-label="Refresh">↻</button>
+</header>
+
+<main>
+
+  <section class="view active" id="view-scan">
+    <div id="personalGate"></div>
+    <div id="verdictSlot"></div>
+    <div id="marketBannerSlot"></div>
+    <div class="tf-row">
+      <span class="tf-label">Timeframe</span>
+      <div class="tf-toggle">
+        <button class="tf-btn" data-tf="1h">1H</button>
+        <button class="tf-btn" data-tf="1d">1D</button>
+      </div>
+    </div>
+    <div class="chips" id="filterChips">
+      <button class="chip" data-filter="watchlist" aria-pressed="false">⭐ Watchlist</button>
+      <button class="chip active" data-filter="winners" aria-pressed="true">🏆 Winners</button>
+      <button class="chip" data-filter="momentum" aria-pressed="false">🚀 Momentum</button>
+      <button class="chip" data-filter="pullback" aria-pressed="false">📉 Pullback</button>
+      <button class="chip" data-filter="confluence" aria-pressed="false">✨ Confluence</button>
+      <button class="chip" data-filter="all" aria-pressed="false">All Coins</button>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="search" placeholder="Search BTC, ETH, SOL…" />
+    </div>
+    <div id="coinList"></div>
+  </section>
+
+  <section class="view" id="view-journal">
+    <div id="cooldownPanel"></div>
+
+    <div class="block">
+      <h3>Data <span class="hint">backup &amp; restore</span></h3>
+      <div class="field-row" style="margin-bottom:10px">
+        <button class="ghost small" id="exportJournalBtn">⬇️ Export</button>
+        <button class="ghost small" id="importJournalBtn">⬆️ Import</button>
+      </div>
+      <button class="ghost small" id="pauseTradingBtn" style="width:100%">⏸️ Pause trading for 24h</button>
+      <input type="file" id="importFileInput" accept="application/json" style="display:none" />
+    </div>
+
+    <div class="block">
+      <h3>Account <span class="hint">saved automatically</span></h3>
+      <div class="field-row">
+        <div>
+          <label>Balance (USD)</label>
+          <input type="number" id="jBalance" value="100" step="any" />
+        </div>
+        <div>
+          <label>Risk per trade (%)</label>
+          <input type="number" id="jRiskPct" value="1" step="0.5" />
+        </div>
+      </div>
+    </div>
+
+    <div id="portfolioPanel"></div>
+
+    <div class="block" id="logTradeBlock">
+      <h3>Log a trade <span class="hint">auto-fills</span></h3>
+      <div class="field-row">
+        <div>
+          <label>Coin</label>
+          <input type="text" id="jCoin" placeholder="BTC" autocapitalize="characters" />
+        </div>
+        <div>
+          <label>Setup</label>
+          <select id="jSetup">
+            <option value="Momentum">🚀 Momentum</option>
+            <option value="Pullback">📉 Pullback</option>
+          </select>
+        </div>
+      </div>
+      <div class="preview" id="jPreview">Type a coin symbol and the trade fills in automatically.</div>
+      <div class="field-row">
+        <div><label>Entry</label><input type="number" id="jEntry" step="any" /></div>
+        <div><label>Stop</label><input type="number" id="jStop" step="any" /></div>
+      </div>
+      <div class="field-row">
+        <div><label>Target</label><input type="number" id="jTarget" step="any" /></div>
+        <div><label>Size (USD)</label><input type="number" id="jSize" step="any" /></div>
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="jNotes" placeholder="Why this trade?"></textarea>
+      </div>
+      <button class="full" id="jAddBtn">Save Trade</button>
+    </div>
+
+    <div id="journalInsight"></div>
+    <div class="section-title">Stats</div>
+    <div class="stats-row" id="journalStats"></div>
+    <div id="journalBreakdown"></div>
+
+    <div class="section-header">
+      <div class="section-title">Trade history</div>
+      <button class="danger hidden" id="clearClosedBtn">Clear closed</button>
+    </div>
+    <div id="bulkConfirmSlot"></div>
+    <div id="journalList"></div>
+  </section>
+
+  <section class="view" id="view-alerts">
+    <div class="block">
+      <h3>Permission
+        <span class="perm-pill perm-default" id="permStatus">Unknown</span>
+      </h3>
+      <p style="font-size:0.8rem;color:var(--muted);margin:0 0 12px;line-height:1.6">
+        Grant notification permission so alerts appear in your phone's notification shade.
+      </p>
+      <button class="full green" id="grantPermBtn">Grant permission</button>
+      <button class="full ghost" id="testAlertBtn" style="margin-top:8px">🔊 Send test alert</button>
+    </div>
+
+    <div class="block">
+      <h3>Alert types</h3>
+      <div class="switch-row">
+        <div class="txt"><div class="label">Master switch</div>
+          <div class="desc">Turn all alerts on or off</div></div>
+        <div class="switch" id="sw_enabled" role="switch" tabindex="0" aria-checked="false" aria-label="Master switch"></div>
+      </div>
+      <div class="switch-row">
+        <div class="txt"><div class="label">🔊 Sound</div>
+          <div class="desc">Play a tone when an alert fires</div></div>
+        <div class="switch" id="sw_sound" role="switch" tabindex="0" aria-checked="false" aria-label="Sound"></div>
+      </div>
+      <div class="switch-row">
+        <div class="txt"><div class="label">📳 Vibration</div>
+          <div class="desc">Vibrate on alert</div></div>
+        <div class="switch" id="sw_vibrate" role="switch" tabindex="0" aria-checked="false" aria-label="Vibration"></div>
+      </div>
+      <div class="switch-row">
+        <div class="txt"><div class="label">📱 Notification bar</div>
+          <div class="desc">Push to Android notifications</div></div>
+        <div class="switch" id="sw_notify" role="switch" tabindex="0" aria-checked="false" aria-label="Notification bar"></div>
+      </div>
+      <div class="switch-row">
+        <div class="txt"><div class="label">⚠️ Near stop-loss</div>
+          <div class="desc">Warn before price hits stop</div></div>
+        <div class="switch" id="sw_nearStop" role="switch" tabindex="0" aria-checked="false" aria-label="Near stop-loss"></div>
+      </div>
+      <div class="switch-row">
+        <div class="txt"><div class="label">🎯 Near target</div>
+          <div class="desc">Warn before price hits target</div></div>
+        <div class="switch" id="sw_nearTarget" role="switch" tabindex="0" aria-checked="false" aria-label="Near target"></div>
+      </div>
+      <div class="switch-row">
+        <div class="txt"><div class="label">✅ Trade closed</div>
+          <div class="desc">Alert on auto-close (win or loss)</div></div>
+        <div class="switch" id="sw_onClose" role="switch" tabindex="0" aria-checked="false" aria-label="Trade closed"></div>
+      </div>
+      <div class="switch-row">
+        <div class="txt"><div class="label">🏆 New setup</div>
+          <div class="desc">Alert when a fresh opportunity appears</div></div>
+        <div class="switch" id="sw_onSetup" role="switch" tabindex="0" aria-checked="false" aria-label="New setup"></div>
+      </div>
+    </div>
+
+    <div class="block">
+      <h3>Warning distance</h3>
+      <label>% away from stop/target to trigger warning (0 disables)</label>
+      <input type="number" id="nearThreshold" value="0.5" step="0.1" min="0" max="5" />
+    </div>
+
+    <div class="block">
+      <h3>Alert history</h3>
+      <button class="ghost small" id="clearLogBtn" style="margin-bottom:12px">Clear history</button>
+      <div id="alertLog"></div>
+    </div>
+
+    <div class="banner">
+      <b>Heads up:</b> Alerts fire every ~55 seconds while the app is open. Keep it running on your laptop to catch fresh setups in real time.
+    </div>
+  </section>
+
+  <section class="view" id="view-detail">
+    <div class="detail-header">
+      <button class="back-btn" id="detailBackBtn" aria-label="Back">←</button>
+      <div class="info">
+        <div class="name" id="dName">—</div>
+        <div class="symbol" id="dSymbol">—</div>
+      </div>
+      <div class="right">
+        <div class="price" id="dPrice">—</div>
+        <div class="change" id="dChange">—</div>
+      </div>
+    </div>
+
+    <div class="period-tabs" id="periodTabs">
+      <button data-period="15m">15m</button>
+      <button data-period="1h">1H</button>
+      <button data-period="4h">4H</button>
+      <button data-period="1d" class="active">1D</button>
+      <button data-period="1w">1W</button>
+    </div>
+
+    <div id="chartContainer">
+      <div class="chart-status" id="chartStatus">Loading chart…</div>
+    </div>
+
+    <div class="legend" id="chartLegend"></div>
+
+    <div id="dStats"></div>
+
+    <button class="full ghost" id="dLogTradeBtn" style="margin-top:12px">📝 Log a trade for this coin</button>
+  </section>
+
+  <section class="view" id="view-risk">
+    <div class="block">
+      <h3>Position size calculator</h3>
+      <div class="field"><label>Account balance (USD)</label>
+        <input type="number" id="cBalance" value="100" step="any" /></div>
+      <div class="field"><label>Risk per trade (%)</label>
+        <input type="number" id="cRisk" value="1" step="0.5" /></div>
+      <div class="field-row">
+        <div><label>Entry price</label>
+          <input type="number" id="cEntry" value="100" step="any" /></div>
+        <div><label>Stop-loss</label>
+          <input type="number" id="cStop" value="98" step="any" /></div>
+      </div>
+      <button class="full" id="cCalcBtn">Calculate</button>
+      <div class="preview" id="cOut" style="margin-top:12px">Enter values and tap calculate.</div>
+    </div>
+    <div class="banner">
+      <b>Rule:</b> Risk only 1–2% of your account per trade. Big caps (BTC, ETH) can use wider stops; small caps need tighter stops.
+    </div>
+  </section>
+
+</main>
+
+<nav>
+  <button class="active" data-view="scan"><span class="ico">🔍</span><span>Scan</span></button>
+  <button data-view="journal"><span class="ico">📓</span><span>Journal</span></button>
+  <button data-view="alerts"><span class="ico">🔔</span><span>Alerts</span>
+    <span class="badge-dot hidden" id="navDot"></span></button>
+  <button data-view="risk"><span class="ico">🧮</span><span>Risk</span></button>
+</nav>
+
+<div id="cooldownModal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <h3>⚠️ Resume trading?</h3>
+    <p style="font-size:0.82rem;color:var(--muted);line-height:1.6;margin:8px 0 14px">
+      You're on a cooldown because you're on a losing streak. Book Ch.6 warns that emotional trading after losses is the #1 way accounts get destroyed.
+    </p>
+    <p style="font-size:0.82rem;color:var(--text);margin:0 0 10px">
+      Type <b style="color:var(--red)">I UNDERSTAND THE RISK</b> below to override.
+    </p>
+    <input type="text" id="cooldownResumeInput" placeholder="Type the phrase" autocapitalize="characters" style="width:100%;margin-bottom:12px" />
+    <div class="form-actions">
+      <button class="ghost small" id="cooldownCancelBtn">Cancel</button>
+      <button class="small" id="cooldownConfirmBtn" disabled style="background:var(--red);opacity:0.4">Resume trading</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BINANCE_TICKER_URL = 'https://api.binance.com/api/v3/ticker/24hr';
+const MIN_VOLUME_USD = 1_000_000;
+const POLL_INTERVAL_MS = 55000;
+const SETUP_COOLDOWN_MS = 60 * 60 * 1000;
+
+const COIN_NAMES = {
+  BTC:'Bitcoin', ETH:'Ethereum', BNB:'BNB', SOL:'Solana', XRP:'XRP',
+  ADA:'Cardano', DOGE:'Dogecoin', AVAX:'Avalanche', DOT:'Polkadot',
+  LINK:'Chainlink', TRX:'TRON', MATIC:'Polygon', SHIB:'Shiba Inu',
+  LTC:'Litecoin', BCH:'Bitcoin Cash', UNI:'Uniswap', ATOM:'Cosmos',
+  XLM:'Stellar', ETC:'Ethereum Classic', FIL:'Filecoin', APT:'Aptos',
+  ARB:'Arbitrum', OP:'Optimism', NEAR:'NEAR Protocol', INJ:'Injective',
+  SUI:'Sui', SEI:'Sei', TIA:'Celestia', IMX:'Immutable', HBAR:'Hedera',
+  VET:'VeChain', ICP:'Internet Computer', ALGO:'Algorand', FTM:'Fantom',
+  SAND:'The Sandbox', MANA:'Decentraland', AXS:'Axie Infinity',
+  GALA:'Gala', APE:'ApeCoin', GRT:'The Graph', EOS:'EOS', AAVE:'Aave',
+  MKR:'Maker', SNX:'Synthetix', CRV:'Curve DAO', LDO:'Lido DAO',
+  RPL:'Rocket Pool', COMP:'Compound', SUSHI:'Sushi', CAKE:'PancakeSwap',
+  YFI:'yearn.finance', '1INCH':'1inch', ENJ:'Enjin Coin', CHZ:'Chiliz',
+  ZIL:'Zilliqa', IOTA:'IOTA', EGLD:'MultiversX', FLOW:'Flow',
+  ROSE:'Oasis Network', KSM:'Kusama', XTZ:'Tezos', NEO:'Neo',
+  QNT:'Quant', WAVES:'Waves', MINA:'Mina Protocol', LRC:'Loopring',
+  STX:'Stacks', RNDR:'Render', FET:'Fetch.ai', WLD:'Worldcoin',
+  PEPE:'Pepe', FLOKI:'Floki', BONK:'Bonk', WIF:'dogwifhat', ORDI:'ORDI',
+  JUP:'Jupiter', PYTH:'Pyth Network', JTO:'Jito', STRK:'Starknet',
+  ZK:'zkSync', MANTA:'Manta Network', DYM:'Dymension', ALT:'AltLayer',
+  PIXEL:'Pixels', PORTAL:'Portal', AEVO:'Aevo', ETHFI:'Ether.fi',
+  ENA:'Ethena', OMNI:'Omni Network', SAGA:'Saga', TNSR:'Tensor',
+  REZ:'Renzo', BOME:'Book of Meme', NOT:'Notcoin', IO:'io.net',
+  ZRO:'LayerZero', BLAST:'Blast', ZETA:'ZetaChain', DYDX:'dYdX',
+  GMX:'GMX', PENDLE:'Pendle', CFX:'Conflux', AR:'Arweave', KAS:'Kaspa',
+  TAO:'Bittensor', THETA:'Theta Network', KAVA:'Kava', BAND:'Band Protocol',
+  API3:'API3', NMR:'Numeraire', BAL:'Balancer', UMA:'UMA',
+  KNC:'Kyber Network', ZRX:'0x Protocol', BAT:'Basic Attention',
+  DASH:'Dash', ZEC:'Zcash', XMR:'Monero', DCR:'Decred', RVN:'Ravencoin',
+  DGB:'DigiByte', SC:'Siacoin', ONT:'Ontology', ICX:'ICON', ARK:'Ark',
+  STEEM:'Steem', HIVE:'Hive', LSK:'Lisk', REN:'Ren', STORJ:'Storj',
+  ANKR:'Ankr', CELO:'Celo', ONE:'Harmony', COTI:'COTI', CTSI:'Cartesi',
+  DENT:'Dent', HOT:'Holo', IOTX:'IoTeX', NKN:'NKN', OGN:'Origin Protocol',
+  RSR:'Reserve Rights', AUDIO:'Audius', CVC:'Civic', MASK:'Mask Network',
+  DODO:'DODO', BNT:'Bancor', TRB:'Tellor', ILV:'Illuvium', MAGIC:'Magic',
+  BLUR:'Blur', XAI:'Xai', MEME:'Memecoin', ACE:'Fusionist', NFP:'NFPrompt',
+  AI:'Sleepless AI', OCEAN:'Ocean Protocol', AGIX:'SingularityNET',
+  ASTER:'Aster', PENGU:'Pudgy Penguins', ONDO:'Ondo', POL:'Polygon Ecosystem Token'
+};
+
+const EXCLUDED_BASES = new Set([
+  'USDC','FDUSD','TUSD','BUSD','USDP','DAI','USDD','USTC','PYUSD',
+  'WBTC','WBETH','BETH','STETH','RETH','CBETH','WSTETH','SFRXETH',
+  'USD1','EURI','AEUR','EUR','GBP','TRY','BRL','ARS','ZAR','RUB',
+  'UAH','PLN','RON','CZK','JPY','IDRT','BIDR','VAI','BVND','NGN',
+  'BKRW','PAXG','XAUT'
+]);
+
+const TRADES_KEY = 'crypto_journal_v2';
+const SETTINGS_KEY = 'crypto_settings_v1';
+const ALERT_SETTINGS_KEY = 'crypto_alert_settings_v1';
+const ALERT_LOG_KEY = 'crypto_alert_log_v1';
+const SEEN_SETUPS_KEY = 'crypto_seen_setups_v1';
+const COOLDOWN_KEY = 'crypto_cooldown_v1';
+const STREAK_ACK_KEY = 'crypto_streak_ack_v1';
+const TIMEFRAME_KEY = 'crypto_timeframe_v1';
+const WATCHLIST_KEY = 'crypto_watchlist_v1';
+
+const ICON_DATA_URL = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">' +
+  '<rect width="192" height="192" rx="42" fill="#0a0d12"/>' +
+  '<rect x="40" y="110" width="20" height="40" rx="4" fill="#22c55e"/>' +
+  '<rect x="70" y="80" width="20" height="70" rx="4" fill="#3b82f6"/>' +
+  '<rect x="100" y="60" width="20" height="90" rx="4" fill="#fbbf24"/>' +
+  '<rect x="130" y="95" width="20" height="55" rx="4" fill="#ef4444"/>' +
+  '</svg>'
+);
+
+let allCoins = [];
+let currentView = 'scan';
+let currentFilter = 'winners';
+let storageWarned = false;
+let currentTimeframe = '1d';
+let verdictExpanded = false;
+let winnersFilteredCount = 0;
+
+const $ = id => document.getElementById(id);
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[m]));
+
+function safeSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+  catch (e) {
+    if (!storageWarned) { storageWarned = true; showBanner('⚠️ Storage full', 'warn'); }
+    return false;
+  }
+}
+function safeGet(key, fallback) {
+  try { const raw = localStorage.getItem(key); return raw == null ? fallback : JSON.parse(raw); }
+  catch (e) { return fallback; }
+}
+function money(n) {
+  if (n == null || !isFinite(n)) return '—';
+  const sign = n < 0 ? '-' : '';
+  const a = Math.abs(n);
+  if (a >= 1e12) return sign + '$' + (a / 1e12).toFixed(2) + 'T';
+  if (a >= 1e9)  return sign + '$' + (a / 1e9).toFixed(2) + 'B';
+  if (a >= 1e6)  return sign + '$' + (a / 1e6).toFixed(2) + 'M';
+  if (a >= 1e3)  return sign + '$' + (a / 1e3).toFixed(2) + 'K';
+  return sign + '$' + a.toFixed(2);
+}
+function price(n) {
+  if (n == null) return '—';
+  if (n >= 1000) return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (n >= 1) return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  if (n >= 0.01) return '$' + n.toFixed(4);
+  return '$' + n.toFixed(8);
+}
+function units(n) {
+  if (n == null || !isFinite(n) || n <= 0) return '—';
+  if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  if (n >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  if (n >= 0.0001) return n.toFixed(6);
+  return n.toFixed(8);
+}
+function formatTime(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (e) { return '—'; }
+}
+function ch24(c) { return c.price_change_percentage_24h ?? 0; }
+function ch7(c) { return c.price_change_percentage_7d_in_currency ?? 0; }
+function ch30(c) { return c.price_change_percentage_30d_in_currency ?? 0; }
+function has7d(c) { return c.price_change_percentage_7d_in_currency != null; }
+function has30d(c) { return c.price_change_percentage_30d_in_currency != null; }
+
+function findSwings(candles, lookback = 2) {
+  const highs = [];
+  const lows = [];
+  for (let i = lookback; i < candles.length - lookback; i++) {
+    const c = candles[i];
+    let isHigh = true;
+    let isLow = true;
+    for (let j = 1; j <= lookback; j++) {
+      if (candles[i - j].high >= c.high || candles[i + j].high >= c.high) isHigh = false;
+      if (candles[i - j].low <= c.low || candles[i + j].low <= c.low) isLow = false;
+      if (!isHigh && !isLow) break;
+    }
+    if (isHigh) highs.push({ idx: i, price: c.high });
+    if (isLow) lows.push({ idx: i, price: c.low });
+  }
+  return { highs, lows };
+}
+
+function classifyStructure(candles) {
+  const empty = {
+    trend: 'unknown', bos: null, choch: null, position: 'unknown',
+    lastHigh: null, lastLow: null, distToResistance: null, distToSupport: null,
+    swingCounts: { highs: 0, lows: 0 }
+  };
+  if (!candles || candles.length < 30) return empty;
+
+  const { highs, lows } = findSwings(candles, 2);
+  if (highs.length < 3 || lows.length < 3) return empty;
+
+  const h1 = highs[highs.length - 1];
+  const h2 = highs[highs.length - 2];
+  const h3 = highs[highs.length - 3];
+  const l1 = lows[lows.length - 1];
+  const l2 = lows[lows.length - 2];
+  const l3 = lows[lows.length - 3];
+
+  const higherHighs = [h1.price > h2.price, h2.price > h3.price];
+  const higherLows  = [l1.price > l2.price, l2.price > l3.price];
+  const lowerHighs  = [h1.price < h2.price, h2.price < h3.price];
+  const lowerLows   = [l1.price < l2.price, l2.price < l3.price];
+
+  const upScore   = higherHighs.filter(Boolean).length + higherLows.filter(Boolean).length;
+  const downScore = lowerHighs.filter(Boolean).length + lowerLows.filter(Boolean).length;
+
+  let trend = 'neutral';
+  if (upScore >= 3 && upScore > downScore) trend = 'up';
+  else if (downScore >= 3 && downScore > upScore) trend = 'down';
+  else if (upScore >= 2 && upScore >= downScore + 2) trend = 'up';
+  else if (downScore >= 2 && downScore >= upScore + 2) trend = 'down';
+
+  const last = candles[candles.length - 1];
+  const price = last.close;
+
+  const recentThreshold = candles.length - 60;
+  let bos = null;
+  for (let i = highs.length - 1; i >= 0; i--) {
+    if (highs[i].idx > recentThreshold && last.high > highs[i].price) { bos = 'bull'; break; }
+  }
+  if (!bos) {
+    for (let i = lows.length - 1; i >= 0; i--) {
+      if (lows[i].idx > recentThreshold && last.low < lows[i].price) { bos = 'bear'; break; }
+    }
+  }
+
+  let choch = null;
+  if (trend === 'up' && last.close < l1.price) choch = 'bear';
+  if (trend === 'down' && last.close > h1.price) choch = 'bull';
+
+  const range = h1.price - l1.price;
+  let position = 'equilibrium';
+  if (range > 0) {
+    const pos = (price - l1.price) / range;
+    if (pos > 0.7) position = 'premium';
+    else if (pos < 0.3) position = 'discount';
+  }
+
+  const distToResistance = h1.price > 0 ? ((h1.price - price) / price) * 100 : 0;
+  const distToSupport = price > 0 ? ((price - l1.price) / price) * 100 : 0;
+
+  return {
+    trend, bos, choch, position,
+    lastHigh: h1.price,
+    lastLow: l1.price,
+    distToResistance,
+    distToSupport
+  };
+}
+
+function structureMultiplier(s) {
+  if (!s || s.trend === 'unknown') return 1.0;
+  let m = 1.0;
+  if (s.trend === 'up')          m *= 1.12;
+  else if (s.trend === 'down')   m *= 0.60;
+  else if (s.trend === 'neutral') m *= 0.85;
+  if (s.bos === 'bull') m *= 1.06;
+  if (s.bos === 'bear') m *= 0.88;
+  if (s.choch === 'bear') m *= 0.72;
+  if (s.choch === 'bull') m *= 1.08;
+  if (s.position === 'premium')  m *= 0.90;
+  if (s.position === 'discount') m *= 1.06;
+  return Math.max(0.30, Math.min(1.35, m));
+}
+
+function structureBadge(s) {
+  if (!s || s.trend === 'unknown') return null;
+  if (s.choch === 'bear') return { label: '⚠️ Structure broke down', cls: 'broken' };
+  if (s.trend === 'down') return { label: '📐 Downtrend', cls: 'broken' };
+  return null;
+}
+
+function hasRoomToRun(c) {
+  const ind = getInd(c);
+  if (!ind || ind.error) return null;
+  if (!ind.structure || ind.high7d == null) return null;
+  const s = ind.structure;
+  const price = c.current_price;
+
+  if (s.position === 'premium') return { pass: false, label: '🔺 Premium — near top of range' };
+  if (s.distToResistance != null && s.distToResistance < 8) {
+    return { pass: false, label: `⚠️ Resistance only ${s.distToResistance.toFixed(1)}% away` };
+  }
+  if (price >= ind.high7d * 0.985) return { pass: false, label: '📈 At 7-day high' };
+  return { pass: true, label: '✅ Room to run' };
+}
+
+function tradeVerdict(c) {
+  const ind = getInd(c);
+  if (!ind) return { verdict: 'WAIT', reason: 'Still loading…', cls: 'loading' };
+  if (ind.error) return { verdict: 'WAIT', reason: 'Data unavailable', cls: 'loading' };
+
+  const reasons = [];
+
+  const isMom = isMomentumBurst(c);
+  const isPull = isPullback(c);
+  if (!isMom && !isPull) reasons.push('No longer a valid setup');
+
+  const chance = estimateWinChance(c);
+  if (chance < 45) reasons.push(`Win chance ${chance}% (need 45%)`);
+
+  const ev = expectedValue(c);
+  if (ev <= 0) reasons.push('EV is negative');
+
+  if (isParabolic(c)) reasons.push('Parabolic move');
+
+  if (ind.structure && structureBadge(ind.structure)) {
+    reasons.push(structureBadge(ind.structure).label);
+  }
+
+  const rc = hasRoomToRun(c);
+  if (rc && !rc.pass) reasons.push(rc.label);
+
+  if (reasons.length === 0) return { verdict: 'TRADE', reason: 'All checks passed', cls: 'trade' };
+  return { verdict: 'SKIP', reason: reasons[0], cls: 'skip' };
+}
+
+function loadWatchlist() { const w = safeGet(WATCHLIST_KEY, []); return Array.isArray(w) ? w : []; }
+function saveWatchlist(w) { safeSet(WATCHLIST_KEY, w); }
+function isWatched(symbol) { return loadWatchlist().includes(String(symbol).toLowerCase()); }
+function toggleWatch(symbol) {
+  const s = String(symbol).toLowerCase();
+  const w = loadWatchlist();
+  const idx = w.indexOf(s);
+  if (idx >= 0) { w.splice(idx, 1); saveWatchlist(w); return false; }
+  w.push(s); saveWatchlist(w); return true;
+}
+
+function loadCooldown() { return safeGet(COOLDOWN_KEY, { active: false, until: null, reason: null }); }
+function saveCooldown(c) { safeSet(COOLDOWN_KEY, c); }
+function isCooldownActive() {
+  const c = loadCooldown();
+  if (!c.active) return false;
+  if (c.until && Date.now() > c.until) {
+    saveCooldown({ active: false, until: null, reason: null });
+    return false;
+  }
+  return true;
+}
+function activateCooldown(hours, reason) {
+  const until = Date.now() + hours * 60 * 60 * 1000;
+  saveCooldown({ active: true, until, reason });
+}
+function clearCooldown() { saveCooldown({ active: false, until: null, reason: null }); }
+function cooldownTimeLeft() {
+  const c = loadCooldown();
+  if (!c.active || !c.until) return 0;
+  return Math.max(0, c.until - Date.now());
+}
+
+function computeMarketRegime() {
+  if (!allCoins.length) return null;
+  const btc = allCoins.find(c => c.symbol.toLowerCase() === 'btc');
+  if (!btc) return null;
+  const btc7 = ch7(btc);
+  const top30 = allCoins.slice(0, 30);
+  const upCount = top30.filter(c => ch24(c) > 0).length;
+  const breadth = top30.length ? (upCount / top30.length) * 100 : 50;
+
+  let state, title, desc, cls, icon;
+  if (btc7 > 5 && breadth >= 60) {
+    state = 'bull'; icon = '🌞';
+    title = 'Bullish market';
+    desc = `BTC +${btc7.toFixed(1)}% · ${breadth.toFixed(0)}% of top 30 up. Trend signals reliable.`;
+    cls = 'bull';
+  } else if (btc7 < -5 || breadth < 30) {
+    state = 'bear'; icon = '🌧️';
+    title = 'Bearish market';
+    desc = `BTC ${btc7.toFixed(1)}% · only ${breadth.toFixed(0)}% of top 30 up. Signals often fail.`;
+    cls = 'bear';
+  } else {
+    state = 'neutral'; icon = '⛅';
+    title = 'Neutral / choppy';
+    desc = `BTC ${btc7 >= 0 ? '+' : ''}${btc7.toFixed(1)}% · ${breadth.toFixed(0)}% of top 30 up. Quality only.`;
+    cls = 'neutral';
+  }
+  return { state, cls, icon, title, desc, btc7, breadth };
+}
+
+function renderMarketBanner() {
+  const slot = $('marketBannerSlot');
+  if (!slot) return;
+  const r = computeMarketRegime();
+  if (!r) { slot.innerHTML = ''; return; }
+  slot.innerHTML = `
+    <div class="market-banner ${r.cls}">
+      <div class="icon">${r.icon}</div>
+      <div class="body">
+        <div class="title">${r.title}</div>
+        <div class="desc">${r.desc}</div>
+      </div>
+    </div>`;
+}
+
+function tradesLoggedToday() {
+  const trades = loadTrades();
+  const today = new Date().toDateString();
+  return trades.filter(t => new Date(t.date).toDateString() === today).length;
+}
+
+function computeVerdict() {
+  if (!allCoins.length) {
+    return { level: 'loading', icon: '⏳', title: 'Loading market data…', sub: 'Verdict will appear once prices load.', reasons: [] };
+  }
+
+  const regime = computeMarketRegime();
+  const trades = loadTrades();
+  const open = trades.filter(t => t.status === 'open');
+  const dd = computeDrawdown(trades);
+  const portfolio = analyzePortfolio(trades);
+
+  const reasons = [];
+  let stops = 0;
+  let cautions = 0;
+
+  if (isCooldownActive()) {
+    stops++;
+    reasons.push({ level: 'bad', text: '<b>Cooldown active.</b> Respect it.' });
+  }
+
+  if (regime && regime.state === 'bear') {
+    stops++;
+    reasons.push({ level: 'bad', text: `<b>Bearish market.</b> BTC ${regime.btc7.toFixed(1)}% this week. Signals fail more often.` });
+  } else if (regime && regime.state === 'bull') {
+    reasons.push({ level: 'good', text: `<b>Bullish market.</b> BTC +${regime.btc7.toFixed(1)}%. Favourable.` });
+  } else if (regime) {
+    reasons.push({ level: 'info', text: `<b>Neutral market.</b> Quality setups only.` });
+  }
+
+  if (open.length >= 2) {
+    stops++;
+    reasons.push({ level: 'bad', text: `<b>${open.length} open trades.</b> Don't stack positions.` });
+  } else if (open.length === 1) {
+    cautions++;
+    reasons.push({ level: 'warn', text: '<b>One open trade.</b> One per day max.' });
+  } else {
+    reasons.push({ level: 'good', text: '<b>No open trades.</b> Clean slate.' });
+  }
+
+  const todayCount = tradesLoggedToday();
+  if (todayCount >= 1) {
+    stops++;
+    reasons.push({ level: 'bad', text: `<b>Already logged ${todayCount} trade today.</b> Overtrading leak.` });
+  } else {
+    reasons.push({ level: 'good', text: '<b>No trades logged today.</b> Fresh mind.' });
+  }
+
+  if (dd.current <= -2) {
+    stops++;
+    reasons.push({ level: 'bad', text: `<b>${Math.abs(dd.current)}-loss streak.</b> Wait for it to break.` });
+  } else if (dd.current >= 2) {
+    reasons.push({ level: 'good', text: `<b>${dd.current}-win streak.</b> Stay disciplined.` });
+  }
+
+  if (portfolio.capitalPct > 50) {
+    stops++;
+    reasons.push({ level: 'bad', text: `<b>${portfolio.capitalPct.toFixed(0)}% deployed.</b> Keep dry powder.` });
+  } else if (portfolio.capitalPct > 30) {
+    cautions++;
+    reasons.push({ level: 'warn', text: `<b>${portfolio.capitalPct.toFixed(0)}% deployed.</b> Get selective.` });
+  }
+
+  let level, icon, title, sub;
+  if (stops >= 2) {
+    level = 'red'; icon = '🛑';
+    title = 'Don\'t trade today';
+    sub = `${stops} stop signals. Protect capital.`;
+  } else if (stops === 1 || cautions >= 2) {
+    level = 'yellow'; icon = '⚠️';
+    title = 'Trade carefully';
+    sub = `${stops + cautions} warning${(stops + cautions) !== 1 ? 's' : ''} active.`;
+  } else {
+    level = 'green'; icon = '✅';
+    title = 'Good day to trade';
+    sub = 'No stop signals. Trade the plan.';
+  }
+  return { level, icon, title, sub, reasons };
+}
+
+function renderVerdict() {
+  const slot = $('verdictSlot');
+  if (!slot) return;
+  const v = computeVerdict();
+
+  const reasonHTML = v.reasons.map(r => {
+    const icon = r.level === 'good' ? '✅'
+               : r.level === 'warn' ? '⚠️'
+               : r.level === 'bad'  ? '🛑'
+               : 'ℹ️';
+    return `<div class="verdict-reason-row ${r.level}">
+      <span class="r-icon">${icon}</span>
+      <span class="r-text">${r.text}</span>
+    </div>`;
+  }).join('');
+
+  slot.innerHTML = `
+    <div class="verdict-card ${v.level} ${verdictExpanded ? 'expanded' : ''}" id="verdictCard">
+      <div class="verdict-head" id="verdictHead">
+        <div class="verdict-icon">${v.icon}</div>
+        <div class="verdict-body">
+          <div class="verdict-title">${v.title}</div>
+          <div class="verdict-sub">${v.sub}</div>
+        </div>
+        ${v.reasons.length ? `<div class="verdict-chevron">▼</div>` : ''}
+      </div>
+      ${v.reasons.length ? `
+        <div class="verdict-reasons">
+          ${reasonHTML}
+          <div class="verdict-note">Not financial advice. You make the final call.</div>
+        </div>` : ''}
+    </div>`;
+}
+
+const indicatorsCache = {};
+const indicatorInFlight = new Set();
+let enrichTimer = null;
+
+function getInd(c) { return indicatorsCache[c.id + '_' + currentTimeframe]; }
+
+function sma(arr, period) {
+  if (!arr || arr.length < period) return null;
+  let sum = 0;
+  for (let i = arr.length - period; i < arr.length; i++) sum += arr[i];
+  return sum / period;
+}
+function stddev(arr) {
+  if (!arr || arr.length < 2) return null;
+  const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+  const variance = arr.reduce((s, v) => s + (v - mean) * (v - mean), 0) / arr.length;
+  return Math.sqrt(variance);
+}
+function emaSeries(arr, period) {
+  if (!arr || arr.length < period) return null;
+  const k = 2 / (period + 1);
+  const out = new Array(arr.length).fill(null);
+  let seed = 0;
+  for (let i = 0; i < period; i++) seed += arr[i];
+  out[period - 1] = seed / period;
+  for (let i = period; i < arr.length; i++) out[i] = arr[i] * k + out[i - 1] * (1 - k);
+  return out;
+}
+function computeMacd(closes, fast = 12, slow = 26, signalP = 9) {
+  if (closes.length < slow + signalP) return null;
+  const emaF = emaSeries(closes, fast);
+  const emaS = emaSeries(closes, slow);
+  if (!emaF || !emaS) return null;
+  const macdLine = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (emaF[i] == null || emaS[i] == null) continue;
+    macdLine.push(emaF[i] - emaS[i]);
+  }
+  if (macdLine.length < signalP + 1) return null;
+  const sig = emaSeries(macdLine, signalP);
+  if (!sig) return null;
+  const n = macdLine.length - 1;
+  const macdNow = macdLine[n], sigNow = sig[n];
+  const macdPrev = macdLine[n - 1], sigPrev = sig[n - 1];
+  return { aboveSignal: macdNow > sigNow, bullishCross: macdNow > sigNow && macdPrev <= sigPrev };
+}
+function computeRsi(closes, period = 14) {
+  if (closes.length < period + 1) return null;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d >= 0) gains += d; else losses -= d;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + (d > 0 ? d : 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + (d < 0 ? -d : 0)) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+async function fetchBinanceKlines(symbol, interval = '1h', limit = 200) {
+  const url = `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Binance ' + res.status);
+  return await res.json();
+}
+
+async function computeIndicators(coin, timeframe) {
+  const symbol = coin.symbol.toUpperCase() + 'USDT';
+  try {
+    const dailyKlines = await fetchBinanceKlines(symbol, '1d', 200);
+    if (!Array.isArray(dailyKlines) || dailyKlines.length < 31) throw new Error('Not enough daily candles');
+
+    const dailyCandles = dailyKlines.map(k => ({
+      time: parseInt(k[0]),
+      open: parseFloat(k[1]),
+      high: parseFloat(k[2]),
+      low: parseFloat(k[3]),
+      close: parseFloat(k[4]),
+      volume: parseFloat(k[5])
+    }));
+    const dailyCloses = dailyCandles.map(c => c.close);
+    const n = dailyCloses.length;
+    const change7d = n >= 8 ? ((dailyCloses[n-1] - dailyCloses[n-8]) / dailyCloses[n-8]) * 100 : null;
+    const change30d = n >= 31 ? ((dailyCloses[n-1] - dailyCloses[n-31]) / dailyCloses[n-31]) * 100 : null;
+
+    const last7 = dailyCandles.slice(-7);
+    const high7d = last7.length ? Math.max(...last7.map(c => c.high)) : null;
+
+    const structure = classifyStructure(dailyCandles);
+
+    let closes, volumes;
+    if (timeframe === '1d') {
+      closes = dailyCloses;
+      volumes = dailyCandles.map(c => c.volume);
+    } else {
+      const hKlines = await fetchBinanceKlines(symbol, '1h', 200);
+      if (!Array.isArray(hKlines) || hKlines.length < 30) throw new Error('Not enough hourly candles');
+      closes = hKlines.map(k => parseFloat(k[4]));
+      volumes = hKlines.map(k => parseFloat(k[5]));
+    }
+    const price = closes[closes.length - 1];
+
+    const s50 = sma(closes, 50);
+    const s200 = sma(closes, 200);
+    let trend = 'neutral';
+    if (s50 != null && s200 != null) {
+      if (price > s50 && s50 > s200) trend = 'up';
+      else if (price < s50 && s50 < s200) trend = 'down';
+      else trend = 'mixed';
+    } else if (s50 != null) {
+      trend = price > s50 ? 'up-partial' : 'down-partial';
+    }
+
+    const m = computeMacd(closes);
+    const r = computeRsi(closes);
+    let momentum = 'neutral';
+    if (m && r != null) {
+      if ((m.bullishCross || m.aboveSignal) && r > 55) momentum = 'strong';
+      else if (m.aboveSignal && r > 50) momentum = 'mild';
+      else if (!m.aboveSignal && r < 50) momentum = 'weak';
+    }
+
+    const avgVol20 = sma(volumes, 20);
+    const lastVol = volumes[volumes.length - 1];
+    let volume = 'neutral';
+    if (avgVol20 != null) {
+      if (lastVol > avgVol20 * 1.15) volume = 'high';
+      else if (lastVol < avgVol20 * 0.7) volume = 'low';
+    }
+
+    const returns = [];
+    for (let i = 1; i < closes.length; i++) returns.push((closes[i] - closes[i - 1]) / closes[i - 1]);
+    const sd = stddev(returns);
+    const dailyVol = sd != null ? sd * (timeframe === '1d' ? 100 : Math.sqrt(24) * 100) : null;
+    let volatility = 'unknown';
+    if (dailyVol != null) {
+      if (dailyVol < 2) volatility = 'low';
+      else if (dailyVol < 5) volatility = 'medium';
+      else volatility = 'high';
+    }
+
+    return {
+      trend, momentum, volume, volatility, dailyVol,
+      change7d, change30d, structure, high7d,
+      ts: Date.now()
+    };
+  } catch (e) {
+    return {
+      trend: 'neutral', momentum: 'neutral', volume: 'neutral',
+      volatility: 'unknown', dailyVol: null,
+      structure: null, high7d: null, ts: Date.now(), error: true
+    };
+  }
+}
+
+async function enrichCoins(coins) {
+  const tf = currentTimeframe;
+  const STALE = 10 * 60 * 1000;
+  const now = Date.now();
+  const todo = coins.filter(c => {
+    const key = c.id + '_' + tf;
+    if (indicatorInFlight.has(key)) return false;
+    const cached = indicatorsCache[key];
+    if (!cached) return true;
+    return now - cached.ts > STALE;
+  });
+  if (!todo.length) return;
+  todo.forEach(c => indicatorInFlight.add(c.id + '_' + tf));
+
+  const CONCURRENCY = 6;
+  let cursor = 0;
+  async function worker() {
+    while (cursor < todo.length) {
+      const coin = todo[cursor++];
+      const key = coin.id + '_' + tf;
+      const ind = await computeIndicators(coin, tf);
+      indicatorsCache[key] = ind;
+      indicatorInFlight.delete(key);
+      if (ind.change7d != null) coin.price_change_percentage_7d_in_currency = ind.change7d;
+      if (ind.change30d != null) coin.price_change_percentage_30d_in_currency = ind.change30d;
+      if (currentView === 'scan') {
+        clearTimeout(enrichTimer);
+        enrichTimer = setTimeout(renderCoinList, 300);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+}
+
+function isStablecoin(c) {
+  const p = c.current_price ?? 0;
+  const a = Math.abs(ch24(c));
+  const w = Math.abs(ch7(c));
+  const m = Math.abs(ch30(c));
+  return p >= 0.95 && p <= 1.05 && a < 1.0 && w < 2.5 && m < 4.0;
+}
+function isMomentumBurst(c) { return ch24(c) >= 3 && ch24(c) <= 8 && ch7(c) > 0 && c.total_volume >= 5e6; }
+function isPullback(c) { return ch7(c) >= 12 && ch24(c) <= -2 && ch24(c) >= -5.5 && ch30(c) > -10; }
+function isParabolic(c) {
+  const a = ch24(c), w = ch7(c), m = ch30(c);
+  if (w >= 40) return true;
+  if (a >= 20) return true;
+  if (m >= 100 && w >= 15) return true;
+  return false;
+}
+
+function qualityScore35(c) {
+  const r1 = ch24(c), r7 = ch7(c) / 7, r30 = ch30(c) / 30;
+  const trend = r1 * 0.5 + r7 * 0.3 + r30 * 0.2;
+  const trendScore = (1 / (1 + Math.exp(-trend / 2))) * 30 * 0.35;
+  const mean = (r1 + r7 + r30) / 3;
+  const mad = (Math.abs(r1 - mean) + Math.abs(r7 - mean) + Math.abs(r30 - mean)) / 3;
+  const consistencyScore = (1 / (1 + mad / 3)) * 25 * 0.35;
+  const liqScore = Math.min(1, c.total_volume / 3e8) * 25 * 0.35;
+  const rank = c.market_cap_rank ?? 500;
+  const capScore = Math.max(0, 20 - Math.log10(rank + 1) * 4) * 0.35;
+  return trendScore + consistencyScore + liqScore + capScore;
+}
+function confluenceScore(c) {
+  const ind = getInd(c);
+  let trendPts = 12, momentumPts = 12, volumePts = 7;
+  if (ind && !ind.error) {
+    if (ind.trend === 'up') trendPts = 25;
+    else if (ind.trend === 'up-partial') trendPts = 18;
+    else if (ind.trend === 'down') trendPts = 0;
+    else if (ind.trend === 'down-partial') trendPts = 5;
+    else trendPts = 12;
+    if (ind.momentum === 'strong') momentumPts = 25;
+    else if (ind.momentum === 'mild') momentumPts = 16;
+    else if (ind.momentum === 'weak') momentumPts = 4;
+    else momentumPts = 12;
+    if (ind.volume === 'high') volumePts = 15;
+    else if (ind.volume === 'low') volumePts = 3;
+    else volumePts = 7;
+  }
+  const base = qualityScore35(c);
+  let total = trendPts + momentumPts + volumePts + base;
+  if (isParabolic(c)) total *= 0.5;
+  if (ind && !ind.error && ind.structure) total *= structureMultiplier(ind.structure);
+  return Math.max(0, Math.min(100, Math.round(total)));
+}
+function winnerScore(c) { return confluenceScore(c); }
+function confluenceCount(c) {
+  const ind = getInd(c);
+  if (!ind || ind.error) return 0;
+  let n = 0;
+  if (ind.trend === 'up' || ind.trend === 'up-partial') n++;
+  if (ind.momentum === 'strong') n++;
+  if (ind.volume === 'high') n++;
+  if (expectedValue(c) > 0) n++;
+  if (ind.structure && ind.structure.trend === 'up' && !ind.structure.choch) n = Math.max(n, 3);
+  return Math.min(4, n);
+}
+function scoreColor(s) {
+  if (s >= 70) return 'var(--green)';
+  if (s >= 50) return '#fbbf24';
+  if (s >= 35) return '#f97316';
+  return 'var(--red)';
+}
+function estimateWinChance(c) {
+  const isMom = isMomentumBurst(c);
+  const isPull = isPullback(c);
+  let baseP = 0.30;
+  if (isPull) baseP = 0.46;
+  else if (isMom) baseP = 0.28;
+  let logOdds = Math.log(baseP / (1 - baseP));
+  logOdds += ((winnerScore(c) - 50) / 50) * 0.8;
+  const vol = Math.min(1, c.total_volume / 3e8);
+  logOdds += Math.max(-0.6, Math.min(0.6, (vol - 0.5) * 1.2));
+  const a = ch24(c), w = ch7(c), m = ch30(c);
+  if (a > 0 && w > 0) logOdds += 0.3;
+  if (w > 0 && m > 0) logOdds += 0.3;
+  if (a > 0 && m > 0) logOdds += 0.2;
+  if (Math.abs(a) > 6) logOdds -= 0.4;
+  if (isParabolic(c)) logOdds -= 1.0;
+  const rank = c.market_cap_rank ?? 500;
+  if (rank <= 20) logOdds += 0.2;
+  else if (rank >= 100) logOdds -= 0.3;
+  const ind = getInd(c);
+  if (ind && !ind.error && ind.structure) {
+    if (ind.structure.trend === 'up') logOdds += 0.2;
+    else if (ind.structure.trend === 'down') logOdds -= 0.6;
+    if (ind.structure.choch === 'bear') logOdds -= 0.4;
+    if (ind.structure.position === 'premium') logOdds -= 0.2;
+  }
+  const p = 1 / (1 + Math.exp(-logOdds));
+  return Math.max(5, Math.min(65, Math.round(p * 100)));
+}
+function setupRR(c) {
+  if (isPullback(c)) return 1.17;
+  if (isMomentumBurst(c)) return 2.25;
+  return 1.75;
+}
+function expectedValue(c) {
+  const p = estimateWinChance(c) / 100;
+  return (p * setupRR(c)) - ((1 - p) * 1);
+}
+function chanceColor(p) {
+  if (p >= 55) return 'var(--green)';
+  if (p >= 42) return '#fbbf24';
+  if (p >= 30) return '#f97316';
+  return 'var(--red)';
+}
+
+function loadSettings() { return safeGet(SETTINGS_KEY, { balance: 100, riskPct: 1 }); }
+function saveSettings(s) { safeSet(SETTINGS_KEY, s); }
+
+function applyTradePnlToBalance(trade) {
+  if (!trade) return;
+  const currentPnl = trade.pnl || 0;
+  const appliedPnl = trade.balanceAppliedPnl || 0;
+  const delta = currentPnl - appliedPnl;
+  if (delta === 0) return;
+  const s = loadSettings();
+  s.balance = (s.balance || 0) + delta;
+  saveSettings(s);
+  trade.balanceAppliedPnl = currentPnl;
+  syncAccountInputs();
+}
+
+const DEFAULT_ALERT_SETTINGS = {
+  enabled: true, sound: true, vibrate: true, notify: true,
+  nearStop: true, nearTarget: true, onClose: true, onSetup: true,
+  nearThreshold: 0.5
+};
+function loadAlertSettings() { return Object.assign({}, DEFAULT_ALERT_SETTINGS, safeGet(ALERT_SETTINGS_KEY, {})); }
+function saveAlertSettings(s) { safeSet(ALERT_SETTINGS_KEY, s); }
+function nearThresholdFraction() {
+  const raw = parseFloat(loadAlertSettings().nearThreshold);
+  const pct = isNaN(raw) ? 0.5 : Math.max(0, Math.min(5, raw));
+  return pct / 100;
+}
+function loadAlertLog() { return safeGet(ALERT_LOG_KEY, []); }
+function saveAlertLog(l) { safeSet(ALERT_LOG_KEY, l.slice(0, 100)); }
+function logAlert(type, title, message) {
+  const log = loadAlertLog();
+  log.unshift({ type, title, message, time: Date.now() });
+  saveAlertLog(log);
+  if (currentView === 'alerts') renderAlertLog();
+}
+
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; } }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function playTone(freq, dur, delay = 0) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime + delay;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.20, t + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + dur + 0.02);
+}
+function playAlertSound(type) {
+  ensureAudio();
+  if (!audioCtx) return;
+  if (type === 'win') { playTone(880, 0.15, 0); playTone(1320, 0.20, 0.16); }
+  else if (type === 'loss') { playTone(440, 0.18, 0); playTone(300, 0.28, 0.18); }
+  else if (type === 'warn') { playTone(660, 0.10, 0); playTone(660, 0.10, 0.15); playTone(660, 0.10, 0.30); }
+  else if (type === 'setup') { playTone(780, 0.12, 0); playTone(1040, 0.12, 0.14); playTone(1300, 0.18, 0.28); }
+  else { playTone(520, 0.12, 0); playTone(780, 0.15, 0.13); }
+}
+function doVibrate(p) { if (navigator.vibrate) { try { navigator.vibrate(p); } catch(e){} } }
+
+let swReg = null;
+let swReady = null;
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  swReady = navigator.serviceWorker.register('sw.js')
+    .then(r => { swReg = r; return r; }).catch(() => null);
+}
+async function pushNative(title, body, tag = 'crypto-general') {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const opts = {
+    body, tag, renotify: true,
+    icon: ICON_DATA_URL, badge: ICON_DATA_URL,
+    requireInteraction: true
+  };
+  try {
+    let reg = swReg;
+    if (!reg && swReady) reg = await swReady;
+    if (!reg && navigator.serviceWorker.ready) reg = await navigator.serviceWorker.ready.catch(() => null);
+    if (reg && typeof reg.showNotification === 'function') {
+      await reg.showNotification(title, opts);
+      return;
+    }
+  } catch (e) {}
+  try {
+    const n = new Notification(title, opts);
+    setTimeout(() => { try { n.close(); } catch(e){} }, 30000);
+  } catch (e) {}
+}
+let bannerTimer = null;
+function showBanner(text, kind) {
+  const b = $('alertBanner');
+  b.textContent = text;
+  b.className = kind + ' show';
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => { b.className = kind; }, 8000);
+}
+function fireAlert(kind, title, message, tag) {
+  const s = loadAlertSettings();
+  if (!s.enabled) return;
+  const bannerKind = kind === 'win' ? 'win' : kind === 'loss' ? 'loss' : kind === 'warn' ? 'warn' : kind === 'setup' ? 'setup' : 'info';
+  showBanner(title + ' — ' + message, bannerKind);
+  if (s.sound) playAlertSound(bannerKind);
+  if (s.vibrate) {
+    if (kind === 'win') doVibrate([120,60,120]);
+    else if (kind === 'loss') doVibrate([300,100,300]);
+    else if (kind === 'warn') doVibrate([80,50,80,50,80]);
+    else if (kind === 'setup') doVibrate([100,60,100,60,200]);
+    else doVibrate([60,40,60]);
+  }
+  if (s.notify) pushNative(title, message, tag || 'crypto-general');
+  logAlert(bannerKind, title, message);
+  const dot = $('navDot');
+  if (dot && currentView !== 'alerts') dot.classList.remove('hidden');
+}
+
+function findCoinLive(symbol, coinId) {
+  if (coinId) { const byId = allCoins.find(c => c.id === coinId); if (byId) return byId; }
+  const s = String(symbol || '').toLowerCase();
+  if (!s) return null;
+  let best = null;
+  for (const c of allCoins) {
+    if (c.symbol.toLowerCase() !== s) continue;
+    const r = c.market_cap_rank ?? 1e9;
+    if (!best || r < (best.market_cap_rank ?? 1e9)) best = c;
+  }
+  return best;
+}
+
+function coinCardHTML(c, highlight) {
+  const a = ch24(c), w = ch7(c), m = ch30(c);
+  const cls = a > 0 ? 'up' : a < 0 ? 'down' : 'flat';
+  const s = winnerScore(c);
+  const chance = estimateWinChance(c);
+  const ev = expectedValue(c);
+  const ind = getInd(c);
+  const watched = isWatched(c.symbol);
+  const verdict = tradeVerdict(c);
+
+  let setupBadge = '';
+  if (isMomentumBurst(c)) setupBadge = '<span class="sig-badge momentum">🚀 Momentum</span>';
+  if (isPullback(c)) setupBadge = '<span class="sig-badge pullback">📉 Pullback</span>';
+
+  let trendBadge = '';
+  if (ind && !ind.error) {
+    if (ind.trend === 'up' || ind.trend === 'up-partial') trendBadge = '<span class="trend-pill up">↗ UP</span>';
+    else if (ind.trend === 'down' || ind.trend === 'down-partial') trendBadge = '<span class="trend-pill down">↘ DOWN</span>';
+  }
+
+  const w7Display = has7d(c) ? `${w >= 0 ? '+' : ''}${w.toFixed(1)}%` : '—';
+  const w7Class = has7d(c) ? (w >= 0 ? 'up' : 'down') : 'flat';
+  const m30Display = has30d(c) ? `${m >= 0 ? '+' : ''}${m.toFixed(0)}%` : '—';
+  const m30Class = has30d(c) ? (m >= 0 ? 'up' : 'down') : 'flat';
+
+  const verdictBanner = `
+    <div class="verdict-banner ${verdict.cls}">
+      <span class="verdict-label">${verdict.verdict}</span>
+      <span class="verdict-reason">${verdict.reason}</span>
+    </div>`;
+
+  const chanceBlock = highlight ? `
+    <div class="chance-block" style="border-color:${chanceColor(chance)}33">
+      <div class="chance-num" style="color:${chanceColor(chance)}">${chance}%</div>
+      <div class="chance-label">win chance · EV <b style="color:${ev >= 0 ? 'var(--green)' : 'var(--red)'}">${ev >= 0 ? '+' : ''}$${ev.toFixed(2)}</b></div>
+    </div>` : '';
+
+  return `
+    <div class="coin-card ${highlight ? 'highlight' : ''}"
+         data-symbol="${esc(c.symbol)}" data-id="${esc(c.id)}"
+         style="cursor:pointer">
+      ${verdictBanner}
+      <div class="top">
+        <button class="star-btn ${watched ? 'watched' : ''}"
+                data-symbol="${esc(c.symbol)}"
+                aria-label="${watched ? 'Remove' : 'Add'}">
+          ${watched ? '★' : '☆'}
+        </button>
+        <div class="info">
+          <div class="name">${esc(c.name)}</div>
+          <div class="symbol">${esc(c.symbol.toUpperCase())} · #${c.market_cap_rank ?? '—'}</div>
+        </div>
+        <div class="right">
+          <div class="price">${price(c.current_price)}</div>
+          <div class="change ${cls}">${a >= 0 ? '+' : ''}${a.toFixed(2)}%</div>
+        </div>
+      </div>
+
+      ${(setupBadge || trendBadge) ? `<div class="sig-row">${setupBadge}${trendBadge}</div>` : ''}
+
+      ${chanceBlock}
+
+      <div class="metrics">
+        <div>7d <span class="${w7Class}">${w7Display}</span></div>
+        <div>30d <span class="${m30Class}">${m30Display}</span></div>
+        <div>Vol <span>${money(c.total_volume)}</span></div>
+      </div>
+
+      <div class="score-row">
+        <div class="num" style="color:${scoreColor(s)}">${s}</div>
+        <div class="score-bar"><div class="score-fill" style="width:${s}%;background:${scoreColor(s)}"></div></div>
+      </div>
+    </div>`;
+}
+
+function renderCoinList() {
+  renderVerdict();
+
+  const openTrades = loadTrades().filter(t => t.status === 'open');
+  const gateEl = $('personalGate');
+  if (gateEl) {
+    if (openTrades.length >= 1) {
+      gateEl.innerHTML = `
+        <div class="gate-banner warn">
+          <span class="gate-icon">⚠️</span>
+          <span class="gate-text">You have ${openTrades.length} open trade${openTrades.length !== 1 ? 's' : ''}. Rule: one per day max. Do not open another.</span>
+        </div>`;
+    } else gateEl.innerHTML = '';
+  }
+
+  const wl = loadWatchlist();
+  const chipEl = document.querySelector('[data-filter="watchlist"]');
+  if (chipEl) chipEl.textContent = wl.length ? `⭐ Watchlist (${wl.length})` : '⭐ Watchlist';
+
+  const q = $('search').value.trim().toLowerCase();
+  let list;
+
+  if (currentFilter === 'watchlist') list = allCoins.filter(c => wl.includes(c.symbol.toLowerCase()));
+  else if (currentFilter === 'momentum') list = allCoins.filter(isMomentumBurst);
+  else if (currentFilter === 'pullback') list = allCoins.filter(isPullback);
+  else if (currentFilter === 'confluence') list = allCoins.filter(c => !isStablecoin(c) && confluenceCount(c) >= 3);
+  else if (currentFilter === 'all') list = allCoins;
+  else {
+    const base = allCoins.filter(c => isMomentumBurst(c) || isPullback(c));
+    const passing = base.filter(c => tradeVerdict(c).verdict === 'TRADE');
+    winnersFilteredCount = base.length - passing.length;
+    list = passing;
+  }
+
+  list = list.filter(c => !isStablecoin(c));
+  list = list.slice().sort((a, b) => winnerScore(b) - winnerScore(a));
+  if (q) list = list.filter(c => c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q));
+
+  const el = $('coinList');
+
+  let explainer = '';
+  if (currentFilter === 'winners') {
+    explainer = `<div class="banner" style="border-left-color:var(--amber);margin-bottom:16px"><b>Winners are fully filtered.</b> Only coins passing every code-checkable rule. Eyeball the chart before you trade.</div>`;
+  } else if (currentFilter === 'confluence') {
+    explainer = `<div class="banner" style="border-left-color:var(--green);margin-bottom:16px"><b>✨ Confluence filter.</b> Only 3+ of: Trend UP · Strong Momentum · High Volume · Green EV · Clean Structure.</div>`;
+  } else if (currentFilter === 'watchlist') {
+    explainer = `<div class="banner" style="border-left-color:#fbbf24;margin-bottom:16px"><b>⭐ Your watchlist.</b> Tap ☆ to add or remove.</div>`;
+  }
+
+  if (!list.length) {
+    const msgs = {
+      watchlist: ['⭐', 'No coins watched yet.', 'Tap the ☆ to add one.'],
+      momentum: ['🚀', 'No momentum setups.', 'Needs +3% to +8% today, positive 7d.'],
+      pullback: ['📉', 'No pullback setups.', 'Needs +12% week, -2% to -5.5% today.'],
+      confluence: ['✨', 'No confluence setups yet.', 'Coins must meet 3 of 5.'],
+      all: ['📊', 'No coins found.', 'Try refreshing.'],
+      winners: winnersFilteredCount > 0
+        ? ['🚫', `${winnersFilteredCount} setup${winnersFilteredCount !== 1 ? 's' : ''} filtered out`, 'All failed one or more of the 7 checks.']
+        : ['🏆', 'No qualified setups right now.', 'This is normal. Wait.']
+    };
+    const [e, t, s] = msgs[currentFilter] || msgs.winners;
+    el.innerHTML = explainer + `<div class="empty"><span class="emoji">${e}</span><b>${t}</b><br>${s}</div>`;
+    renderMarketBanner();
+    const toEnrich = currentFilter === 'winners'
+      ? allCoins.filter(c => !isStablecoin(c) && (isMomentumBurst(c) || isPullback(c))).slice(0, 40)
+      : [];
+    if (toEnrich.length) enrichCoins(toEnrich);
+    return;
+  }
+
+  const highlight = currentFilter === 'winners' || currentFilter === 'confluence';
+  el.innerHTML = explainer + list.map(c => coinCardHTML(c, highlight)).join('');
+  renderMarketBanner();
+
+  let toEnrich;
+  if (currentFilter === 'winners') {
+    toEnrich = allCoins
+      .filter(c => !isStablecoin(c) && (isMomentumBurst(c) || isPullback(c)))
+      .slice(0, 40);
+  } else if (currentFilter === 'confluence') {
+    toEnrich = allCoins
+      .filter(c => !isStablecoin(c))
+      .slice(0, 40);
+  } else {
+    toEnrich = list.slice(0, 40);
+  }
+  if (toEnrich.length) enrichCoins(toEnrich);
+}
+
+let pollTimer = null;
+let failStreak = 0;
+let firstFetchDone = false;
+let fetching = false;
+
+function transformBinanceTickers(tickers) {
+  let list = tickers.filter(t => t.symbol.endsWith('USDT'));
+  list = list.filter(t => {
+    const base = t.symbol.slice(0, -4);
+    if (!base) return false;
+    if (base.endsWith('UP') || base.endsWith('DOWN') || base.endsWith('BULL') || base.endsWith('BEAR')) return false;
+    if (EXCLUDED_BASES.has(base)) return false;
+    return true;
+  });
+  list = list.filter(t => parseFloat(t.quoteVolume) >= MIN_VOLUME_USD);
+  list.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+  return list.map((t, i) => {
+    const base = t.symbol.slice(0, -4);
+    const lower = base.toLowerCase();
+    return {
+      id: lower, symbol: lower, name: COIN_NAMES[base] || base,
+      current_price: parseFloat(t.lastPrice),
+      market_cap: parseFloat(t.quoteVolume) * 30,
+      market_cap_rank: i + 1,
+      total_volume: parseFloat(t.quoteVolume),
+      high_24h: parseFloat(t.highPrice),
+      low_24h: parseFloat(t.lowPrice),
+      price_change_percentage_24h: parseFloat(t.priceChangePercent)
+    };
+  });
+}
+
+async function fetchCrypto() {
+  if (fetching) return;
+  fetching = true;
+  const btn = $('refreshBtn');
+  btn.classList.add('spin'); btn.disabled = true;
+  try {
+    const res = await fetch(BINANCE_TICKER_URL);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const raw = await res.json();
+    if (!Array.isArray(raw) || !raw.length) throw new Error('Bad payload');
+    const transformed = transformBinanceTickers(raw);
+    if (!transformed.length) throw new Error('No pairs found');
+
+    const prevMap = {};
+    allCoins.forEach(c => { prevMap[c.id] = c; });
+    transformed.forEach(c => {
+      const prev = prevMap[c.id];
+      if (prev) {
+        if (prev.price_change_percentage_7d_in_currency != null) c.price_change_percentage_7d_in_currency = prev.price_change_percentage_7d_in_currency;
+        if (prev.price_change_percentage_30d_in_currency != null) c.price_change_percentage_30d_in_currency = prev.price_change_percentage_30d_in_currency;
+      }
+    });
+    allCoins = transformed;
+
+    renderCoinList();
+    await autoCloseTrades({ silent: !firstFetchDone });
+    checkNearLevels();
+    checkNewSetups({ silent: !firstFetchDone });
+    if (currentView === 'journal') renderJournal();
+    firstFetchDone = true;
+    failStreak = 0;
+
+    const w = allCoins.filter(c => !isStablecoin(c) && (isMomentumBurst(c) || isPullback(c))).length;
+    $('status').textContent = `${allCoins.length} liquid pairs · ${w} setup${w !== 1 ? 's' : ''} · ${currentTimeframe.toUpperCase()} · ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+  } catch (e) {
+    failStreak++;
+    const msg = failStreak >= 3 ? `Failed to load (${failStreak}×)` : 'Failed to load — tap ↻';
+    $('status').innerHTML = `<span style="color:var(--red)">${msg}</span>`;
+  } finally {
+    fetching = false;
+    btn.classList.remove('spin'); btn.disabled = false;
+    scheduleNextFetch();
+  }
+}
+function scheduleNextFetch() {
+  clearTimeout(pollTimer);
+  const delay = Math.min(POLL_INTERVAL_MS * Math.pow(1.5, failStreak), 900000);
+  pollTimer = setTimeout(fetchCrypto, delay);
+}
+function computePnl(t, exit) {
+  const u = t.entry > 0 && t.size > 0 ? t.size / t.entry : 0;
+  return (exit - t.entry) * u;
+}
+
+function loadTrades() { return safeGet(TRADES_KEY, []); }
+function saveTrades(t) { safeSet(TRADES_KEY, t); }
+
+async function autoCloseTrades({ silent = false } = {}) {
+  const trades = loadTrades();
+  const s = loadAlertSettings();
+  let anyChanged = false;
+
+  for (let i = 0; i < trades.length; i++) {
+    const t = trades[i];
+    if (t.status !== 'open') continue;
+    const c = findCoinLive(t.coin, t.coinId);
+    if (!c) continue;
+
+    let highSinceOpen = c.current_price;
+    let lowSinceOpen = c.current_price;
+
+    try {
+      const openTime = new Date(t.date).getTime();
+      if (isFinite(openTime)) {
+        const symbol = t.coin.toUpperCase() + 'USDT';
+        const klines = await fetchBinanceKlines(symbol, '5m', 1000);
+        if (Array.isArray(klines) && klines.length) {
+          let found = false;
+          for (const k of klines) {
+            const kt = parseInt(k[0], 10);
+            if (kt >= openTime) {
+              const h = parseFloat(k[2]);
+              const l = parseFloat(k[3]);
+              if (!found) {
+                highSinceOpen = h;
+                lowSinceOpen = l;
+                found = true;
+              } else {
+                if (h > highSinceOpen) highSinceOpen = h;
+                if (l < lowSinceOpen) lowSinceOpen = l;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+    }
+
+    if (c.current_price > highSinceOpen) highSinceOpen = c.current_price;
+    if (c.current_price < lowSinceOpen) lowSinceOpen = c.current_price;
+
+    if (t.highSinceOpen !== highSinceOpen || t.lowSinceOpen !== lowSinceOpen) {
+      t.highSinceOpen = highSinceOpen;
+      t.lowSinceOpen = lowSinceOpen;
+      anyChanged = true;
+    }
+
+    const hitTarget = highSinceOpen >= t.target;
+    const hitStop = lowSinceOpen <= t.stop;
+
+    if (hitStop) {
+      t.exit = t.stop;
+      t.status = 'loss';
+      t.closeDate = new Date().toISOString();
+      t.autoClosed = 'stop';
+      t.pnl = computePnl(t, t.stop);
+      t.pnlPct = ((t.stop - t.entry) / t.entry) * 100;
+      anyChanged = true;
+      applyTradePnlToBalance(t);
+      if (s.onClose && !silent) fireAlert('loss', `🛑 ${t.coin} stopped out`, `Loss ${money(Math.abs(t.pnl))}`, 'trade-' + t.coin);
+    } else if (hitTarget) {
+      t.exit = t.target;
+      t.status = 'win';
+      t.closeDate = new Date().toISOString();
+      t.autoClosed = 'target';
+      t.pnl = computePnl(t, t.target);
+      t.pnlPct = ((t.target - t.entry) / t.entry) * 100;
+      anyChanged = true;
+      applyTradePnlToBalance(t);
+      if (s.onClose && !silent) fireAlert('win', `✅ ${t.coin} hit target`, `Profit +${money(t.pnl)}`, 'trade-' + t.coin);
+    }
+
+  }
+
+  if (anyChanged) {
+    saveTrades(trades);
+    checkStreakCooldown();
+    if (currentView === 'journal') renderJournal();
+    if (currentView === 'scan') renderCoinList();
+  }
+}
+
+function checkNearLevels() {
+  const s = loadAlertSettings();
+  if (!s.nearStop && !s.nearTarget) return;
+  const threshold = nearThresholdFraction();
+  if (threshold <= 0) return;
+  const trades = loadTrades();
+  let changed = false;
+  trades.forEach(t => {
+    if (t.status !== 'open') return;
+    const c = findCoinLive(t.coin, t.coinId);
+    if (!c) return;
+    const live = c.current_price;
+    const toStop = Math.abs(live - t.stop) / t.entry;
+    const toTarget = Math.abs(t.target - live) / t.entry;
+    if (s.nearStop && live > t.stop && toStop <= threshold && t.alertedStop !== true) {
+      t.alertedStop = true; changed = true;
+      fireAlert('warn', `⚠️ ${t.coin} near stop`, `${price(live)} · ${(toStop*100).toFixed(2)}% away`, 'trade-' + t.coin);
+    }
+    if (s.nearTarget && live < t.target && toTarget <= threshold && t.alertedTarget !== true) {
+      t.alertedTarget = true; changed = true;
+      fireAlert('info', `🎯 ${t.coin} near target`, `${price(live)} · ${(toTarget*100).toFixed(2)}% away`, 'trade-' + t.coin);
+    }
+    if (t.alertedStop && (live <= t.stop || (live - t.stop) / t.entry > threshold * 2)) { t.alertedStop = false; changed = true; }
+    if (t.alertedTarget && (live >= t.target || (t.target - live) / t.entry > threshold * 2)) { t.alertedTarget = false; changed = true; }
+  });
+  if (changed) saveTrades(trades);
+}
+function loadSeenSetups() { return safeGet(SEEN_SETUPS_KEY, {}); }
+function saveSeenSetups(s) { safeSet(SEEN_SETUPS_KEY, s); }
+
+function checkNewSetups({ silent = false } = {}) {
+  const s = loadAlertSettings();
+  const setups = allCoins.filter(c => !isStablecoin(c) && !isParabolic(c) && (isMomentumBurst(c) || isPullback(c)));
+  if (!setups.length) return;
+  const seen = loadSeenSetups();
+  const now = Date.now();
+  const newOnes = [];
+
+  setups.forEach(c => {
+    const key = c.symbol.toUpperCase();
+    if (now - (seen[key] || 0) > SETUP_COOLDOWN_MS) {
+      if (!silent && s.onSetup) {
+        newOnes.push({
+          symbol: key,
+          name: c.name,
+          setup: isMomentumBurst(c) ? 'Momentum' : 'Pullback',
+          score: winnerScore(c),
+          price: c.current_price,
+          change: ch24(c)
+        });
+      }
+      seen[key] = now;
+    }
+  });
+  saveSeenSetups(seen);
+
+  if (newOnes.length === 0) return;
+  newOnes.sort((a, b) => b.score - a.score);
+
+  if (newOnes.length === 1) {
+    const o = newOnes[0];
+    fireAlert('setup',
+      `🏆 New ${o.setup}: ${o.symbol}`,
+      `${o.name} · score ${o.score} · ${o.change >= 0 ? '+' : ''}${o.change.toFixed(2)}%`,
+      'setup-' + o.symbol);
+  } else {
+    const top = newOnes.slice(0, 3).map(o => `${o.symbol} (${o.score})`).join(' · ');
+    const rest = newOnes.length > 3 ? ` +${newOnes.length - 3} more` : '';
+    fireAlert('setup',
+      `🏆 ${newOnes.length} new setups`,
+      `Top: ${top}${rest}`,
+      'setups-batch-' + Math.floor(now / 60000));
+  }
+}
+
+function checkStreakCooldown() {
+  const trades = loadTrades();
+  const dd = computeDrawdown(trades);
+  const ack = safeGet(STREAK_ACK_KEY, 0);
+
+  if (dd.current >= 0) {
+    if (ack !== 0) safeSet(STREAK_ACK_KEY, 0);
+    return;
+  }
+  if (dd.current <= -3 && dd.current < ack && !isCooldownActive()) {
+    activateCooldown(24, 'streak');
+    fireAlert('warn', '⏸️ Trading paused', `Auto-activated after ${Math.abs(dd.current)} consecutive losses. 24h cooldown.`, 'cooldown');
+  }
+}
+
+function renderCooldownPanel() {
+  const panel = $('cooldownPanel');
+  if (!panel) return;
+
+  const pauseBtn = $('pauseTradingBtn');
+  const logBlock = $('logTradeBlock');
+  const active = isCooldownActive();
+
+  if (pauseBtn) pauseBtn.style.display = active ? 'none' : 'block';
+  if (logBlock) logBlock.classList.toggle('hidden', active);
+
+  if (!active) { panel.innerHTML = ''; return; }
+
+  const c = loadCooldown();
+  const msLeft = cooldownTimeLeft();
+  const h = Math.floor(msLeft / 3600000);
+  const m = Math.floor((msLeft % 3600000) / 60000);
+  const reasonText = c.reason === 'streak' ? 'Auto-paused after 3+ consecutive losses.' : 'You paused trading manually.';
+
+  panel.innerHTML = `
+    <div class="block" style="border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.05)">
+      <h3 style="color:#fca5a5">⚠️ Trading paused</h3>
+      <p style="font-size:0.82rem;color:var(--text);line-height:1.6;margin:0 0 12px">
+        ${reasonText}<br><b>No new trades for ${h}h ${m}m.</b>
+      </p>
+      <button class="ghost small" id="openResumeModalBtn">Resume trading…</button>
+    </div>`;
+
+  const openBtn = $('openResumeModalBtn');
+  if (openBtn) openBtn.addEventListener('click', () => {
+    $('cooldownModal').classList.remove('hidden');
+    $('cooldownResumeInput').value = '';
+    $('cooldownConfirmBtn').disabled = true;
+    $('cooldownConfirmBtn').style.opacity = '0.4';
+  });
+}
+
+function clearTradeFields() { ['jEntry','jStop','jTarget','jSize'].forEach(id => { $(id).value = ''; }); }
+
+function autoFillTrade() {
+  const sym = $('jCoin').value.trim().toUpperCase();
+  const setup = $('jSetup').value;
+  const preview = $('jPreview');
+  const settings = loadSettings();
+
+  if (!sym) { clearTradeFields(); preview.textContent = 'Type a coin symbol and the trade fills in automatically.'; return; }
+  const c = findCoinLive(sym);
+  if (!c) { clearTradeFields(); preview.innerHTML = `<span style="color:var(--red)">Coin "${esc(sym)}" not found.</span>`; return; }
+  if (isStablecoin(c)) { clearTradeFields(); preview.innerHTML = `<span style="color:var(--red)">${esc(sym)} is a stablecoin.</span>`; return; }
+
+  const entry = c.current_price;
+  const ind = getInd(c);
+  let stopPct = setup === 'Momentum' ? 0.02 : 0.03;
+  if (ind && !ind.error && ind.volatility === 'high') stopPct *= 1.5;
+  else if (ind && !ind.error && ind.volatility === 'low') stopPct *= 0.8;
+
+  const targetPct = setup === 'Momentum' ? 0.045 : 0.035;
+  const stop = entry * (1 - stopPct);
+  const target = entry * (1 + targetPct);
+  const riskAmount = settings.balance * (settings.riskPct / 100);
+  const position = riskAmount / (entry - stop);
+  const posValue = position * entry;
+
+  $('jEntry').value = entry.toFixed(entry < 1 ? 6 : 4);
+  $('jStop').value = stop.toFixed(stop < 1 ? 6 : 4);
+  $('jTarget').value = target.toFixed(target < 1 ? 6 : 4);
+  $('jSize').value = posValue.toFixed(2);
+
+  const rrr = (targetPct / stopPct).toFixed(2);
+  const volNote = ind && !ind.error && ind.volatility === 'high' ? '<br><span style="color:#f87171">⚠️ High volatility — wider stop.</span>' : '';
+  const parabNote = isParabolic(c) ? '<br><span style="color:#f87171">⚠️ Parabolic move.</span>' : '';
+  let structNote = '';
+  if (ind && !ind.error && ind.structure) {
+    const sb = structureBadge(ind.structure);
+    if (sb) structNote = `<br><span style="color:#f87171">${sb.label}</span>`;
+  }
+  const rc = hasRoomToRun(c);
+  if (rc && !rc.pass) structNote += `<br><span style="color:#f87171">${rc.label}</span>`;
+  else if (rc && rc.pass) structNote += `<br><span style="color:var(--green)">✅ Room to run.</span>`;
+
+  preview.innerHTML = `
+    <b>${esc(c.name)}</b> · live ${price(entry)}<br>
+    Stop ${(stopPct*100).toFixed(1)}% · Target +${(targetPct*100).toFixed(1)}% · R:R <span class="green">${rrr}:1</span><br>
+    Risk <b>${money(riskAmount)}</b> · Size <b>${money(posValue)}</b> (<span class="green">${units(position)} ${esc(c.symbol.toUpperCase())}</span>)${volNote}${parabNote}${structNote}`;
+}
+
+function addTrade() {
+  if (isCooldownActive()) { showBanner('⏸️ Trading paused', 'warn'); return; }
+  const coin = $('jCoin').value.trim().toUpperCase();
+  const setup = $('jSetup').value;
+  const entry = parseFloat($('jEntry').value);
+  const stop = parseFloat($('jStop').value);
+  const target = parseFloat($('jTarget').value);
+  const size = parseFloat($('jSize').value) || 0;
+  const notes = $('jNotes').value.trim();
+  const preview = $('jPreview');
+
+  if (!coin || !entry || !stop || !target) { preview.innerHTML = '<span style="color:var(--red)">Fill coin, entry, stop, target.</span>'; return; }
+  if (!(stop < entry && entry < target)) { preview.innerHTML = '<span style="color:var(--red)">Stop < entry < target required.</span>'; return; }
+
+  const live = findCoinLive(coin);
+  const trades = loadTrades();
+  trades.unshift({
+    id: Date.now(), date: new Date().toISOString(),
+    coin, coinId: live ? live.id : null,
+    setup, entry, stop, target, size, notes,
+    status: 'open', exit: null, pnl: null,
+    alertedStop: false, alertedTarget: false,
+    highSinceOpen: entry,
+    lowSinceOpen: entry
+  });
+  saveTrades(trades);
+  fireAlert('info', `📝 ${coin} logged`, `${setup} · Entry ${price(entry)}`, 'journal');
+  $('jCoin').value = ''; clearTradeFields(); $('jNotes').value = '';
+  $('jPreview').textContent = 'Saved. Type the next coin to log another.';
+  renderJournal();
+}
+
+let closingTradeId = null;
+let closingExitValue = '';
+let deletingTradeId = null;
+let editingTradeId = null;
+let editDraft = null;
+let bulkConfirmOpen = false;
+
+function closeTradeManual(id) {
+  const exit = parseFloat(closingExitValue);
+  if (!exit || isNaN(exit) || exit <= 0) {
+    const inp = document.querySelector('.close-exit-input');
+    if (inp) { inp.focus(); inp.style.borderColor = 'var(--red)'; }
+    return;
+  }
+  const trades = loadTrades();
+  const t = trades.find(x => x.id === id);
+  if (!t) return;
+  t.exit = exit;
+  t.pnl = computePnl(t, exit);
+  t.pnlPct = ((exit - t.entry) / t.entry) * 100;
+  t.status = t.pnl >= 0 ? 'win' : 'loss';
+  t.closeDate = new Date().toISOString();
+  t.autoClosed = null;
+  applyTradePnlToBalance(t);
+  saveTrades(trades);
+  closingTradeId = null; closingExitValue = '';
+  fireAlert(t.status === 'win' ? 'win' : 'loss', `${t.status === 'win' ? '✅' : '🛑'} ${t.coin} closed`, `${t.pnl >= 0 ? '+' : ''}${money(Math.abs(t.pnl))}`, 'trade-' + t.coin);
+  checkStreakCooldown();
+  renderJournal();
+}
+function deleteTrade(id) {
+  saveTrades(loadTrades().filter(t => t.id !== id));
+  deletingTradeId = null; closingTradeId = null; closingExitValue = '';
+  if (editingTradeId === id) { editingTradeId = null; editDraft = null; }
+  renderJournal();
+}
+function clearClosedTrades() {
+  const trades = loadTrades();
+  const remaining = trades.filter(t => t.status === 'open');
+  const removed = trades.length - remaining.length;
+  if (removed === 0) return;
+  saveTrades(remaining);
+  bulkConfirmOpen = false; deletingTradeId = null;
+  closingTradeId = null; closingExitValue = '';
+  editingTradeId = null; editDraft = null;
+  showBanner(`🗑️ Cleared ${removed} closed trade${removed !== 1 ? 's' : ''}`, 'info');
+  renderJournal();
+}
+function beginEditTrade(id) {
+  const trades = loadTrades();
+  const t = trades.find(x => x.id === id);
+  if (!t) return;
+  editingTradeId = id;
+  editDraft = { coin: t.coin, setup: t.setup, entry: String(t.entry), stop: String(t.stop), target: String(t.target), size: String(t.size || 0), notes: t.notes || '' };
+  closingTradeId = null; deletingTradeId = null; bulkConfirmOpen = false;
+  renderJournal();
+  setTimeout(() => { const first = document.querySelector('.edit-field[data-field="coin"]'); if (first) first.focus(); }, 30);
+}
+function cancelEditTrade() { editingTradeId = null; editDraft = null; renderJournal(); }
+
+function saveEditedTrade(id) {
+  if (!editDraft) return;
+  const coin = String(editDraft.coin || '').trim().toUpperCase();
+  const setup = editDraft.setup === 'Pullback' ? 'Pullback' : 'Momentum';
+  const entry = parseFloat(editDraft.entry);
+  const stop = parseFloat(editDraft.stop);
+  const target = parseFloat(editDraft.target);
+  const size = parseFloat(editDraft.size) || 0;
+  const notes = String(editDraft.notes || '').trim();
+
+  if (!coin || !isFinite(entry) || !isFinite(stop) || !isFinite(target)) { showBanner('⚠️ Fill all fields', 'warn'); return; }
+  if (!(stop < entry && entry < target)) { showBanner('⚠️ Stop must be < entry < target', 'warn'); return; }
+
+  const trades = loadTrades();
+  const idx = trades.findIndex(x => x.id === id);
+  if (idx === -1) return;
+  const t = trades[idx];
+  if (coin !== t.coin) { const live = findCoinLive(coin); t.coinId = live ? live.id : null; }
+  t.coin = coin; t.setup = setup; t.entry = entry; t.stop = stop; t.target = target; t.size = size; t.notes = notes;
+  if (t.status === 'win' || t.status === 'loss') {
+    if (t.exit != null) {
+      t.pnl = computePnl(t, t.exit);
+      t.pnlPct = ((t.exit - t.entry) / t.entry) * 100;
+      t.status = t.pnl >= 0 ? 'win' : 'loss';
+    }
+  }
+  applyTradePnlToBalance(t);
+  saveTrades(trades);
+  editingTradeId = null; editDraft = null;
+  showBanner('✅ Trade updated', 'info');
+  renderJournal();
+}
+
+function computeStats(trades) {
+  const closed = trades.filter(t => t.status === 'win' || t.status === 'loss');
+  const wins = closed.filter(t => t.status === 'win');
+  const losses = closed.filter(t => t.status === 'loss');
+  const winRate = closed.length ? (wins.length / closed.length) * 100 : 0;
+  const totalPnl = closed.reduce((s, t) => s + (t.pnl || 0), 0);
+  const avgWin = wins.length ? wins.reduce((s, t) => s + (t.pnl || 0), 0) / wins.length : 0;
+  const avgLoss = losses.length ? losses.reduce((s, t) => s + (t.pnl || 0), 0) / losses.length : 0;
+  const rrRatio = avgLoss !== 0 ? Math.abs(avgWin / avgLoss) : 0;
+  const expectancy = closed.length ? totalPnl / closed.length : 0;
+  return { closed, wins, losses, winRate, totalPnl, avgWin, avgLoss, rrRatio, expectancy };
+}
+function breakdownBy(trades, key) {
+  const g = {};
+  trades.filter(t => t.status === 'win' || t.status === 'loss').forEach(t => {
+    if (!g[t[key]]) g[t[key]] = { wins: 0, losses: 0, pnl: 0 };
+    if (t.status === 'win') g[t[key]].wins++; else g[t[key]].losses++;
+    g[t[key]].pnl += t.pnl || 0;
+  });
+  return g;
+}
+function computeDrawdown(trades) {
+  const closed = trades.filter(t => t.status === 'win' || t.status === 'loss').slice().sort((a, b) => new Date(a.closeDate || a.date) - new Date(b.closeDate || b.date));
+  if (!closed.length) return { maxDD: 0, peak: 0, current: 0, maxLossStreak: 0, maxWinStreak: 0 };
+
+  let equity = 0, peak = 0, maxDD = 0;
+  let currentStreak = 0, maxLossStreak = 0, maxWinStreak = 0;
+  closed.forEach(t => {
+    equity += t.pnl || 0;
+    if (equity > peak) peak = equity;
+    const dd = peak - equity;
+    if (dd > maxDD) maxDD = dd;
+    if (t.status === 'loss') { if (currentStreak > 0) currentStreak = 0; currentStreak--; }
+    else { if (currentStreak < 0) currentStreak = 0; currentStreak++; }
+    if (currentStreak < maxLossStreak) maxLossStreak = currentStreak;
+    if (currentStreak > maxWinStreak) maxWinStreak = currentStreak;
+  });
+  return { maxDD, peak, current: currentStreak, maxLossStreak: Math.abs(maxLossStreak), maxWinStreak };
+}
+function computeCalibration(trades) {
+  const closed = trades.filter(t => t.status === 'win' || t.status === 'loss');
+  if (closed.length < 5) return null;
+  let sumEst = 0, count = 0;
+  closed.forEach(t => {
+    const live = findCoinLive(t.coin, t.coinId);
+    if (!live) return;
+    sumEst += estimateWinChance(live);
+    count++;
+  });
+  if (!count) return null;
+  const avgEst = sumEst / count;
+  const stats = computeStats(trades);
+  return { avgEst, actual: stats.winRate, delta: stats.winRate - avgEst, samples: closed.length };
+}
+function analyzePortfolio(trades) {
+  const settings = loadSettings();
+  const open = trades.filter(t => t.status === 'open');
+  const totalDeployed = open.reduce((s, t) => s + (t.size || 0), 0);
+  const capitalPct = settings.balance > 0 ? (totalDeployed / settings.balance) * 100 : 0;
+
+  let totalRisk = 0;
+  open.forEach(t => {
+    const u = t.entry > 0 && t.size > 0 ? t.size / t.entry : 0;
+    const loss = (t.entry - t.stop) * u;
+    if (loss > 0) totalRisk += loss;
+  });
+  const riskPct = settings.balance > 0 ? (totalRisk / settings.balance) * 100 : 0;
+
+  const bySetup = {}; const byCoin = {};
+  open.forEach(t => {
+    bySetup[t.setup] = (bySetup[t.setup] || 0) + 1;
+    byCoin[t.coin] = (byCoin[t.coin] || 0) + 1;
+  });
+
+  const warnings = [];
+  if (capitalPct > 50) warnings.push({ level: 'danger', msg: `⚠️ ${capitalPct.toFixed(0)}% of account deployed. Keep under 50%.` });
+  if (riskPct > 8) warnings.push({ level: 'danger', msg: `⚠️ Total risk if all stop: ${riskPct.toFixed(1)}%. Limit 6%.` });
+  else if (riskPct > 5) warnings.push({ level: 'warn', msg: `Total risk if all stop: ${riskPct.toFixed(1)}%. Getting high.` });
+
+  const dominant = Object.entries(bySetup).sort((a,b) => b[1] - a[1])[0];
+  if (dominant && dominant[1] >= 3) warnings.push({ level: 'warn', msg: `All ${dominant[1]} trades are "${dominant[0]}". If it fails, they all fail together.` });
+
+  const dupCoin = Object.entries(byCoin).find(([_, n]) => n >= 2);
+  if (dupCoin) warnings.push({ level: 'danger', msg: `You have ${dupCoin[1]} open trades on ${dupCoin[0]}. One bet, not two.` });
+
+  return { open, totalDeployed, capitalPct, totalRisk, riskPct, bySetup, byCoin, warnings };
+}
+
+function generateInsight(stats, setupG, portfolio, drawdown, calibration) {
+  const lines = [];
+  if (stats.closed.length === 0 && portfolio.open.length === 0) {
+    return `<div class="insight"><div class="title">🧠 Learning mode</div>Log at least <b>20 closed trades</b> before trusting patterns. Right now: <b>0</b>.</div>`;
+  }
+  lines.push(`Closed: <b>${stats.closed.length}</b> ${stats.closed.length < 20 ? '<span style="color:var(--muted)">— need 20</span>' : '<span class="good">— good sample</span>'}`);
+
+  const m = setupG['Momentum'], p = setupG['Pullback'];
+  const wr = g => g ? (g.wins / (g.wins + g.losses) * 100) : 0;
+  if (m && p) {
+    const mwr = wr(m), pwr = wr(p);
+    if (Math.abs(mwr - pwr) >= 15) {
+      const better = mwr > pwr ? 'Momentum' : 'Pullback';
+      lines.push(`<span class="hl">Your ${better} trades work better.</span> Momentum ${mwr.toFixed(0)}% · Pullback ${pwr.toFixed(0)}%`);
+    }
+  }
+  if (stats.avgLoss !== 0) {
+    if (stats.rrRatio >= 2) lines.push(`R:R <span class="good">${stats.rrRatio.toFixed(2)}:1</span>`);
+    else if (stats.rrRatio < 1) lines.push(`<span class="bad">Avg loss > avg win.</span>`);
+  }
+  if (stats.expectancy > 0) lines.push(`Expectancy <span class="good">+$${stats.expectancy.toFixed(2)}/trade</span>`);
+  else if (stats.expectancy < 0) lines.push(`Expectancy <span class="bad">-$${Math.abs(stats.expectancy).toFixed(2)}/trade</span>`);
+
+  if (calibration && calibration.samples >= 5) {
+    const d = calibration.delta;
+    if (d >= 8) lines.push(`📊 <span class="good">Beating estimates by ${d.toFixed(0)}%</span>`);
+    else if (d <= -8) lines.push(`📊 <span class="bad">Actual ${Math.abs(d).toFixed(0)}% below estimate</span>`);
+  }
+
+  if (drawdown.current <= -3) lines.push(`<span class="warn">${Math.abs(drawdown.current)}-loss streak.</span> Consider a break.`);
+  if (drawdown.current >= 3) lines.push(`<span class="good">${drawdown.current}-win streak.</span>`);
+
+  return `<div class="insight"><div class="title">🧠 Insight</div>${lines.join('<br>')}</div>`;
+}
+
+function renderPortfolioPanel(trades) {
+  const panel = $('portfolioPanel');
+  const p = analyzePortfolio(trades);
+  const settings = loadSettings();
+
+  const capBarColor = p.capitalPct > 50 ? 'var(--red)' : p.capitalPct > 30 ? 'var(--amber)' : 'var(--green)';
+  const riskBarColor = p.riskPct > 8 ? 'var(--red)' : p.riskPct > 5 ? 'var(--amber)' : 'var(--green)';
+
+  let html = `
+    <div class="portfolio-panel">
+      <div class="title"><span>📊 Portfolio health</span><span style="font-weight:500;text-transform:none;letter-spacing:0">${p.open.length} open</span></div>
+      <div class="portfolio-row">
+        <span class="k">Capital deployed</span>
+        <span class="v">${money(p.totalDeployed)} / ${money(settings.balance)}</span>
+      </div>
+      <div class="portfolio-bar"><div class="portfolio-bar-fill" style="width:${Math.min(100, p.capitalPct)}%;background:${capBarColor}"></div></div>
+      <div class="portfolio-row" style="border-top:1px solid var(--border-soft);margin-top:6px;padding-top:10px">
+        <span class="k">Max risk if all stopped</span>
+        <span class="v" style="color:${riskBarColor}">${p.riskPct.toFixed(1)}% (${money(p.totalRisk)})</span>
+      </div>
+      <div class="portfolio-bar"><div class="portfolio-bar-fill" style="width:${Math.min(100, p.riskPct * 10)}%;background:${riskBarColor}"></div></div>
+  `;
+
+  if (p.warnings.length) {
+    p.warnings.forEach(w => { html += `<div class="portfolio-warn ${w.level === 'danger' ? 'danger' : ''}">${w.msg}</div>`; });
+  } else if (p.open.length > 0) {
+    html += `<div class="portfolio-warn" style="background:rgba(34,197,94,0.06);border-left-color:var(--green)">✅ Portfolio looks healthy.</div>`;
+  } else {
+    html += `<div class="portfolio-warn" style="background:transparent;border-left-color:var(--border-soft);color:var(--muted)">No open trades.</div>`;
+  }
+
+  html += `</div>`;
+  panel.innerHTML = html;
+}
+
+function renderJournal() {
+  renderCooldownPanel();
+  const trades = loadTrades();
+  const stats = computeStats(trades);
+  const setupG = breakdownBy(trades, 'setup');
+  const coinG = breakdownBy(trades, 'coin');
+  const drawdown = computeDrawdown(trades);
+  const calibration = computeCalibration(trades);
+  const portfolio = analyzePortfolio(trades);
+
+  renderPortfolioPanel(trades);
+  $('journalInsight').innerHTML = generateInsight(stats, setupG, portfolio, drawdown, calibration);
+
+  $('journalStats').innerHTML = `
+    <div class="stat"><div class="val">${trades.length}</div><div class="lbl">Trades</div></div>
+    <div class="stat"><div class="val" style="color:${stats.winRate >= 50 ? 'var(--green)' : '#fbbf24'}">${stats.winRate.toFixed(0)}%</div><div class="lbl">Win rate</div></div>
+    <div class="stat"><div class="val" style="color:${stats.totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${stats.totalPnl >= 0 ? '+' : ''}$${Math.abs(stats.totalPnl).toFixed(0)}</div><div class="lbl">P&L</div></div>
+  `;
+
+  let bd = '';
+  const sk = Object.keys(setupG);
+  if (sk.length) {
+    bd += `<div class="block"><h3>By setup</h3>`;
+    sk.forEach(k => {
+      const g = setupG[k];
+      const w = (g.wins / (g.wins + g.losses) * 100).toFixed(0);
+      bd += `<div class="bd-row"><span class="k">${esc(k)} · ${g.wins+g.losses} trades</span><span class="v" style="color:${w >= 50 ? 'var(--green)' : '#fbbf24'}">${w}% · ${g.pnl >= 0 ? '+' : ''}$${Math.abs(g.pnl).toFixed(2)}</span></div>`;
+    });
+    bd += `</div>`;
+  }
+  const ck = Object.keys(coinG);
+  if (ck.length >= 2) {
+    bd += `<div class="block"><h3>By coin</h3>`;
+    ck.slice().sort((a,b) => coinG[b].pnl - coinG[a].pnl).slice(0, 6).forEach(k => {
+      const g = coinG[k];
+      const w = (g.wins / (g.wins + g.losses) * 100).toFixed(0);
+      bd += `<div class="bd-row"><span class="k">${esc(k)} · ${g.wins+g.losses}</span><span class="v" style="color:${g.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${w}% · ${g.pnl >= 0 ? '+' : ''}$${Math.abs(g.pnl).toFixed(2)}</span></div>`;
+    });
+    bd += `</div>`;
+  }
+  $('journalBreakdown').innerHTML = bd;
+
+  const closedCount = trades.filter(t => t.status === 'win' || t.status === 'loss').length;
+  const clearBtn = $('clearClosedBtn');
+  if (closedCount > 0) { clearBtn.classList.remove('hidden'); clearBtn.textContent = `🗑️ Clear ${closedCount} closed`; }
+  else clearBtn.classList.add('hidden');
+
+  const bulkSlot = $('bulkConfirmSlot');
+  if (bulkConfirmOpen && closedCount > 0) {
+    bulkSlot.innerHTML = `
+      <div class="bulk-confirm">
+        <b>Delete all ${closedCount} closed trades?</b><br>
+        Removes every Win and Loss. Open trades are kept.
+        <div class="bulk-actions">
+          <button class="ghost small bulk-cancel">Cancel</button>
+          <button class="small bulk-confirm-yes" style="background:var(--red)">Yes, delete them</button>
+        </div>
+      </div>`;
+  } else bulkSlot.innerHTML = '';
+
+  const listEl = $('journalList');
+  if (!trades.length) {
+    listEl.innerHTML = '<div class="empty">No trades logged yet.</div>';
+    return;
+  }
+
+  const threshold = nearThresholdFraction();
+  listEl.innerHTML = trades.map(t => {
+    const live = findCoinLive(t.coin, t.coinId);
+    const livePrice = live ? live.current_price : null;
+    const isClosed = t.status === 'win' || t.status === 'loss';
+
+    let statusTag = '<span class="tag open">Open</span>';
+    if (t.status === 'win') statusTag = '<span class="tag win">Win</span>';
+    if (t.status === 'loss') statusTag = '<span class="tag loss">Loss</span>';
+
+    let pnlText = '';
+    if (t.pnl != null) {
+      pnlText = `<div class="pnl ${t.pnl >= 0 ? 'up' : 'down'}">${t.pnl >= 0 ? '+' : ''}$${Math.abs(t.pnl).toFixed(2)}</div>`;
+    } else if (livePrice) {
+      const u = ((livePrice - t.entry) / t.entry) * 100;
+      pnlText = `<div class="pnl flat">${u >= 0 ? '+' : ''}${u.toFixed(2)}%</div>`;
+    }
+
+    let nearTag = '', nearClass = '';
+    if (t.status === 'open' && livePrice && threshold > 0) {
+      const toStop = Math.abs(livePrice - t.stop) / t.entry;
+      const toTarget = Math.abs(t.target - livePrice) / t.entry;
+      if (livePrice > t.stop && toStop <= threshold) { nearClass = 'near-stop'; nearTag = '<span class="tag near-stop">⚠️ Near stop</span>'; }
+      else if (livePrice < t.target && toTarget <= threshold) { nearClass = 'near-target'; nearTag = '<span class="tag near-target">🎯 Near target</span>'; }
+    }
+
+    const computedUnits = t.entry > 0 && t.size > 0 ? t.size / t.entry : 0;
+    const unitsText = computedUnits > 0 ? `${units(computedUnits)} ${esc(t.coin)}` : '—';
+
+    let closeMethodHTML = '';
+    if (isClosed && t.closeDate) {
+      let methodLabel = 'Closed manually'; let methodClass = 'manual';
+      if (t.autoClosed === 'stop') { methodLabel = '🛑 Auto-closed at stop'; methodClass = 'auto-stop'; }
+      else if (t.autoClosed === 'target') { methodLabel = '✅ Auto-closed at target'; methodClass = 'auto-target'; }
+      closeMethodHTML = `<span class="lbl">Closed</span> <span class="closed-method ${methodClass}">${methodLabel}</span> · <span class="closed-time">${formatTime(t.closeDate)}</span><br>`;
+    }
+
+    const isClosing = closingTradeId === t.id;
+    const isDeleting = deletingTradeId === t.id;
+    const isEditing = editingTradeId === t.id;
+
+    return `
+      <div class="trade ${nearClass} ${isEditing ? 'editing' : ''} ${isClosed ? 'closed' : ''}"
+           data-id="${t.id}" data-symbol="${esc(t.coin)}">
+        <button class="del" data-id="${t.id}" ${isEditing ? 'style="display:none"' : ''}>✕</button>
+        <div class="row1">
+          <div>
+            <span class="pair">${esc(t.coin)}</span>
+            <span class="tag ${t.setup === 'Momentum' ? 'momentum' : 'pullback'}">${esc(t.setup)}</span>
+            ${statusTag}${nearTag}${isEditing ? '<span class="tag editing">Editing</span>' : ''}
+          </div>
+          ${pnlText}
+        </div>
+        <div class="details">
+          <span class="lbl">Entry</span> ${price(t.entry)} · <span class="lbl">Stop</span> ${price(t.stop)} · <span class="lbl">Target</span> ${price(t.target)}<br>
+          <span class="lbl">Units</span> <span class="units">${unitsText}</span> · <span class="lbl">Size</span> ${t.size ? money(t.size) : '—'}<br>
+          ${t.exit ? `<span class="lbl">Exit</span> ${price(t.exit)}<br>` : ''}
+          ${closeMethodHTML}
+          ${livePrice && t.status === 'open' ? `<span class="lbl">Live</span> ${price(livePrice)}<br>` : ''}
+          ${!isClosed && t.date ? `<span class="lbl">Opened</span> ${formatTime(t.date)}<br>` : ''}
+          ${t.notes ? `📝 ${esc(t.notes)}` : ''}
+        </div>
+
+        ${!isEditing && !isClosing && !isDeleting ? `
+          <div class="actions">
+            ${t.status === 'open' ? `<button class="ghost small close-btn" data-id="${t.id}">Close trade</button>` : ''}
+            <button class="ghost small edit-btn" data-id="${t.id}">Edit</button>
+          </div>` : ''}
+
+        ${isEditing ? `
+          <div class="edit-form">
+            <div class="field-row">
+              <div><label>Coin</label><input type="text" class="edit-field" data-field="coin" autocapitalize="characters" value="${esc(editDraft.coin)}" /></div>
+              <div><label>Setup</label><select class="edit-field" data-field="setup">
+                  <option value="Momentum" ${editDraft.setup === 'Momentum' ? 'selected' : ''}>🚀 Momentum</option>
+                  <option value="Pullback" ${editDraft.setup === 'Pullback' ? 'selected' : ''}>📉 Pullback</option>
+                </select></div>
+            </div>
+            <div class="field-row">
+              <div><label>Entry</label><input type="number" step="any" class="edit-field" data-field="entry" value="${esc(editDraft.entry)}" /></div>
+              <div><label>Stop</label><input type="number" step="any" class="edit-field" data-field="stop" value="${esc(editDraft.stop)}" /></div>
+            </div>
+            <div class="field-row">
+              <div><label>Target</label><input type="number" step="any" class="edit-field" data-field="target" value="${esc(editDraft.target)}" /></div>
+              <div><label>Size (USD)</label><input type="number" step="any" class="edit-field" data-field="size" value="${esc(editDraft.size)}" /></div>
+            </div>
+            <div class="field"><label>Notes</label><textarea class="edit-field" data-field="notes">${esc(editDraft.notes)}</textarea></div>
+            <div class="form-actions">
+              <button class="ghost small edit-cancel">Cancel</button>
+              <button class="small edit-save" data-id="${t.id}">Save changes</button>
+            </div>
+          </div>` : ''}
+
+        ${isClosing ? `
+          <div class="close-form">
+            <label>Exit price</label>
+            <input type="number" class="close-exit-input" step="any" value="${esc(closingExitValue)}" placeholder="${livePrice ? price(livePrice) : price(t.entry)}" />
+            <div class="form-actions">
+              <button class="ghost small close-cancel">Cancel</button>
+              <button class="small close-confirm" data-id="${t.id}">Confirm close</button>
+            </div>
+          </div>` : ''}
+
+        ${isDeleting ? `
+          <div class="del-confirm">
+            <span>Delete this trade?</span>
+            <button class="ghost small del-cancel">Cancel</button>
+            <button class="small del-yes" data-id="${t.id}" style="background:var(--red)">Delete</button>
+          </div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function updatePermStatus() {
+  const el = $('permStatus');
+  if (!('Notification' in window)) { el.textContent = 'Unsupported'; el.className = 'perm-pill perm-denied'; return; }
+  const p = Notification.permission;
+  if (p === 'granted') { el.textContent = 'Granted'; el.className = 'perm-pill perm-granted'; }
+  else if (p === 'denied') { el.textContent = 'Denied'; el.className = 'perm-pill perm-denied'; }
+  else { el.textContent = 'Not asked'; el.className = 'perm-pill perm-default'; }
+}
+function renderAlertLog() {
+  const log = loadAlertLog();
+  const el = $('alertLog');
+  if (!log.length) { el.innerHTML = '<div class="empty" style="padding:20px">No alerts yet.</div>'; return; }
+  el.innerHTML = log.map(a => `
+    <div class="log-item ${a.type}">
+      <div class="title">${esc(a.title)}</div>
+      <div>${esc(a.message)}</div>
+      <div class="time">${new Date(a.time).toLocaleString()}</div>
+    </div>`).join('');
+}
+function renderAlertsPanel() {
+  const s = loadAlertSettings();
+  ['enabled','sound','vibrate','notify','nearStop','nearTarget','onClose','onSetup'].forEach(k => {
+    const sw = $('sw_' + k);
+    if (sw) { sw.classList.toggle('on', !!s[k]); sw.setAttribute('aria-checked', String(!!s[k])); }
+  });
+  $('nearThreshold').value = s.nearThreshold;
+  updatePermStatus();
+  renderAlertLog();
+  $('navDot').classList.add('hidden');
+}
+
+function calcRisk() {
+  const bal = parseFloat($('cBalance').value) || 0;
+  const riskP = parseFloat($('cRisk').value) || 0;
+  const entry = parseFloat($('cEntry').value) || 0;
+  const stop = parseFloat($('cStop').value) || 0;
+  const out = $('cOut');
+  if (!bal || !entry || !stop || !riskP) { out.textContent = 'Fill all fields.'; return; }
+  if (entry === stop) { out.innerHTML = '<span style="color:var(--red)">Entry and stop cannot match.</span>'; return; }
+  const riskAmount = bal * (riskP / 100);
+  const perUnitRisk = Math.abs(entry - stop);
+  const stopPct = (perUnitRisk / entry) * 100;
+  const position = riskAmount / perUnitRisk;
+  const posValue = position * entry;
+  if (posValue > bal) { out.innerHTML = `<span style="color:var(--red)">Stop too tight.</span><br>Would need ${money(posValue)} but account is ${money(bal)}.`; return; }
+  out.innerHTML = `
+    Max loss <b>${money(riskAmount)}</b><br>
+    Stop distance <b>${stopPct.toFixed(2)}%</b><br>
+    Position <b>${units(position)} units</b><br>
+    Value <b>${money(posValue)}</b>`;
+}
+
+function syncAccountInputs() {
+  const s = loadSettings();
+  $('jBalance').value = s.balance;
+  $('jRiskPct').value = s.riskPct;
+  $('cBalance').value = s.balance;
+  $('cRisk').value = s.riskPct;
+}
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (view === 'journal') { syncAccountInputs(); renderJournal(); }
+  else if (view === 'alerts') renderAlertsPanel();
+  else if (view === 'risk') { syncAccountInputs(); calcRisk(); }
+  else if (view === 'scan') renderCoinList();
+}
+
+let currentChart = null;
+let currentChartSeries = null;
+let currentVolumeSeries = null;
+let currentDetailSymbol = null;
+let currentDetailId = null;
+let currentPeriod = '1d';
+let chartReqId = 0;
+let detailPushedState = false;
+let leavingDetailTo = null;
+const chartCache = {};
+
+function pruneChartCache() {
+  const MAX = 24;
+  const keys = Object.keys(chartCache);
+  if (keys.length <= MAX) return;
+  keys.sort((a, b) => chartCache[a].ts - chartCache[b].ts);
+  keys.slice(0, keys.length - MAX).forEach(k => delete chartCache[k]);
+}
+
+function openCoinDetail(symbol, coinId) {
+  const coin = findCoinLive(symbol, coinId);
+  if (!coin) return;
+  currentDetailSymbol = coin.symbol;
+  currentDetailId = coin.id;
+  currentPeriod = '1d';
+  $('dName').textContent = coin.name;
+  $('dSymbol').textContent = coin.symbol.toUpperCase() + ' · #' + (coin.market_cap_rank ?? '—');
+  $('dPrice').textContent = price(coin.current_price);
+  const a = ch24(coin);
+  $('dChange').textContent = (a >= 0 ? '+' : '') + a.toFixed(2) + '% (24h)';
+  $('dChange').className = 'change ' + (a > 0 ? 'up' : a < 0 ? 'down' : 'flat');
+  document.querySelectorAll('#periodTabs button').forEach(b => b.classList.toggle('active', b.dataset.period === '1d'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-detail'));
+  currentView = 'detail';
+  window.scrollTo({ top: 0 });
+  try { history.pushState({ detail: coin.symbol }, '', '#' + coin.symbol); detailPushedState = true; }
+  catch (e) { detailPushedState = false; }
+  loadChart(coin, '1d');
+  renderDetailStats(coin);
+}
+
+async function openCoinFromJournal(symbol, coinId) {
+  let coin = findCoinLive(symbol, coinId);
+  if (!coin) {
+    showBanner(`⏳ Loading ${symbol.toUpperCase()}…`, 'info');
+    try {
+      const binanceSymbol = symbol.toUpperCase() + 'USDT';
+      const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${binanceSymbol}`);
+      if (res.ok) {
+        const t = await res.json();
+        if (t && t.symbol) {
+          const base = t.symbol.slice(0, -4);
+          coin = {
+            id: base.toLowerCase(), symbol: base.toLowerCase(), name: COIN_NAMES[base] || base,
+            current_price: parseFloat(t.lastPrice),
+            market_cap: parseFloat(t.quoteVolume) * 30,
+            market_cap_rank: 999,
+            total_volume: parseFloat(t.quoteVolume),
+            high_24h: parseFloat(t.highPrice),
+            low_24h: parseFloat(t.lowPrice),
+            price_change_percentage_24h: parseFloat(t.priceChangePercent)
+          };
+          allCoins.push(coin);
+        }
+      }
+    } catch (e) {}
+  }
+  if (!coin) { showBanner(`⚠️ ${symbol.toUpperCase()} not found`, 'warn'); return; }
+  openCoinDetail(coin.symbol, coin.id);
+}
+
+async function loadChart(coin, period) {
+  const myId = ++chartReqId;
+  const statusEl = $('chartStatus');
+  statusEl.textContent = 'Loading chart…';
+  statusEl.style.display = 'flex';
+  const cacheKey = coin.id + '_' + period;
+  const cached = chartCache[cacheKey];
+  const FIVE_MIN = 5 * 60 * 1000;
+  if (cached && Date.now() - cached.ts < FIVE_MIN) {
+    if (myId !== chartReqId) return;
+    renderChart(coin, cached.data);
+    return;
+  }
+  try {
+    const symbol = coin.symbol.toUpperCase() + 'USDT';
+    let interval, limit;
+    if (period === '15m')      { interval = '15m'; limit = 200; }
+    else if (period === '1h')  { interval = '1h';  limit = 200; }
+    else if (period === '4h')  { interval = '4h';  limit = 200; }
+    else if (period === '1d')  { interval = '1d';  limit = 200; }
+    else                       { interval = '1w';  limit = 150; }
+    const klines = await fetchBinanceKlines(symbol, interval, limit);
+    if (myId !== chartReqId) return;
+    if (!Array.isArray(klines) || !klines.length) throw new Error('No data');
+    const seen = new Set();
+    const candles = [];
+    klines.forEach(k => {
+      const time = Math.floor(parseInt(k[0]) / 1000);
+      if (seen.has(time)) return;
+      seen.add(time);
+      candles.push({
+        time,
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5])
+      });
+    });
+    chartCache[cacheKey] = { data: candles, ts: Date.now() };
+    pruneChartCache();
+    if (myId !== chartReqId) return;
+    renderChart(coin, candles);
+  } catch (e) {
+    if (myId !== chartReqId) return;
+    statusEl.textContent = 'Could not load chart. Tap a period tab to retry.';
+    statusEl.style.display = 'flex';
+  }
+}
+
+function renderChart(coin, candles) {
+  const container = $('chartContainer');
+  const statusEl = $('chartStatus');
+  statusEl.style.display = 'none';
+  if (currentChart) { try { currentChart.remove(); } catch(e) {} currentChart = null; currentChartSeries = null; currentVolumeSeries = null; }
+  if (typeof LightweightCharts === 'undefined') {
+    statusEl.textContent = 'Chart library failed to load.';
+    statusEl.style.display = 'flex';
+    return;
+  }
+  const w = Math.max(280, container.clientWidth - 16);
+  const h = 400;
+  const p = coin.current_price;
+  const precision = p < 0.01 ? 8 : 4;
+  const minMove = Math.pow(10, -precision);
+  try {
+    currentChart = LightweightCharts.createChart(container, {
+      width: w, height: h,
+      layout: { background: { color: '#131720' }, textColor: '#8a94a6', fontSize: 11 },
+      grid: { vertLines: { color: '#1a1f2b' }, horzLines: { color: '#1a1f2b' } },
+      rightPriceScale: { borderColor: '#222838', scaleMargins: { top: 0.08, bottom: 0.28 } },
+      timeScale: { borderColor: '#222838', timeVisible: true, secondsVisible: false },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+    });
+
+    currentChartSeries = currentChart.addCandlestickSeries({
+      upColor: '#22c55e', downColor: '#ef4444',
+      borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+      priceFormat: { type: 'price', precision: precision, minMove: minMove }
+    });
+    currentChartSeries.setData(candles.map(c => ({
+      time: c.time, open: c.open, high: c.high, low: c.low, close: c.close
+    })));
+
+    currentVolumeSeries = currentChart.addHistogramSeries({
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'vol',
+      color: '#3b82f6'
+    });
+    currentVolumeSeries.priceScale().applyOptions({
+      scaleMargins: { top: 0.78, bottom: 0 }
+    });
+    currentVolumeSeries.setData(candles.map(c => ({
+      time: c.time,
+      value: c.volume,
+      color: c.close >= c.open ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'
+    })));
+
+    currentChart.timeScale().fitContent();
+  } catch (err) {
+    statusEl.textContent = 'Chart error.';
+    statusEl.style.display = 'flex';
+    if (currentChart) { try { currentChart.remove(); } catch(e) {} currentChart = null; }
+    return;
+  }
+
+  const trades = loadTrades().filter(t => t.coin === coin.symbol.toUpperCase() && t.status === 'open');
+  const t = trades[0];
+  const legendEl = $('chartLegend');
+  legendEl.innerHTML = '';
+  if (t) {
+    try {
+      currentChartSeries.createPriceLine({ price: t.entry, color: '#3b82f6', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'Entry', priceFormat: { type: 'price', precision: precision, minMove: minMove } });
+      currentChartSeries.createPriceLine({ price: t.stop, color: '#ef4444', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'Stop', priceFormat: { type: 'price', precision: precision, minMove: minMove } });
+      currentChartSeries.createPriceLine({ price: t.target, color: '#22c55e', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'Target', priceFormat: { type: 'price', precision: precision, minMove: minMove } });
+    } catch (e) {}
+    legendEl.innerHTML = `
+      <div class="item"><span class="swatch" style="background:#3b82f6"></span>Entry ${price(t.entry)}</div>
+      <div class="item"><span class="swatch" style="background:#ef4444"></span>Stop ${price(t.stop)}</div>
+      <div class="item"><span class="swatch" style="background:#22c55e"></span>Target ${price(t.target)}</div>
+    `;
+  }
+
+  if (window._chartResizeHandler) window.removeEventListener('resize', window._chartResizeHandler);
+  window._chartResizeHandler = () => {
+    if (currentChart && container) { try { currentChart.applyOptions({ width: Math.max(280, container.clientWidth - 16) }); } catch(e) {} }
+  };
+  window.addEventListener('resize', window._chartResizeHandler);
+}
+
+function structureBlockHTML(structure) {
+  if (!structure || structure.trend === 'unknown') {
+    return `<div class="block"><h3>Market structure <span class="hint">not enough data</span></h3><div class="bd-row"><span class="k">Status</span><span class="v" style="color:var(--muted)">Insufficient swing points</span></div></div>`;
+  }
+  const trendLabel = structure.trend === 'up' ? '📈 Uptrend (HH + HL)' : structure.trend === 'down' ? '📉 Downtrend (LH + LL)' : '↔️ Neutral / mixed';
+  const trendColor = structure.trend === 'up' ? 'var(--green)' : structure.trend === 'down' ? 'var(--red)' : 'var(--muted)';
+  const bosLabel = structure.bos === 'bull' ? '✅ Bullish (broke recent high)' : structure.bos === 'bear' ? '🛑 Bearish (broke recent low)' : '— none recent';
+  const chochLabel = structure.choch === 'bull' ? '🔄 Bullish reversal signal' : structure.choch === 'bear' ? '🔄 Bearish reversal signal' : '— none';
+  const posLabel = structure.position === 'premium' ? '🔺 Premium (near top)' : structure.position === 'discount' ? '🔻 Discount (near bottom)' : '⚖️ Equilibrium';
+  const posColor = structure.position === 'premium' ? 'var(--amber)' : structure.position === 'discount' ? 'var(--green)' : 'var(--muted)';
+
+  const resLine = (structure.lastHigh != null && structure.distToResistance != null)
+    ? `${price(structure.lastHigh)} · ${structure.distToResistance.toFixed(2)}%`
+    : '—';
+  const supLine = (structure.lastLow != null && structure.distToSupport != null)
+    ? `${price(structure.lastLow)} · ${structure.distToSupport.toFixed(2)}%`
+    : '—';
+
+  return `
+    <div class="block">
+      <h3>Market structure <span class="hint">from daily candles</span></h3>
+      <div class="bd-row"><span class="k">Trend</span><span class="v" style="color:${trendColor}">${trendLabel}</span></div>
+      <div class="bd-row"><span class="k">Break of structure</span><span class="v">${bosLabel}</span></div>
+      <div class="bd-row"><span class="k">Change of character</span><span class="v">${chochLabel}</span></div>
+      <div class="bd-row"><span class="k">Position in range</span><span class="v" style="color:${posColor}">${posLabel}</span></div>
+      <div class="bd-row"><span class="k">Resistance above</span><span class="v">${resLine}</span></div>
+      <div class="bd-row"><span class="k">Support below</span><span class="v">${supLine}</span></div>
+    </div>`;
+}
+
+function renderDetailStats(coin) {
+  const s = winnerScore(coin);
+  const chance = estimateWinChance(coin);
+  const ev = expectedValue(coin);
+  const isMom = isMomentumBurst(coin);
+  const isPull = isPullback(coin);
+  const stable = isStablecoin(coin);
+  const ind = getInd(coin);
+  const parabolic = isParabolic(coin);
+  const verdict = tradeVerdict(coin);
+
+  const tags = [];
+  if (stable) tags.push('<span class="tag stable">Stablecoin</span>');
+  if (isMom && ind && !ind.error && ind.momentum === 'strong') tags.push('<span class="sig-badge momentum-strong">⚡ Strong Momentum</span>');
+  else if (isMom) tags.push('<span class="sig-badge momentum">🚀 Momentum</span>');
+  if (isPull) tags.push('<span class="sig-badge pullback">📉 Pullback</span>');
+  if (parabolic) tags.push('<span class="sig-badge" style="background:rgba(239,68,68,0.2);color:#fca5a5">⚠️ Parabolic</span>');
+  if (!stable && !isMom && !isPull) tags.push('<span class="tag open">No setup</span>');
+
+  let trendBadge = '';
+  if (ind && !ind.error) {
+    if (ind.trend === 'up') trendBadge = '<span class="trend-pill up">↗ Trend UP</span>';
+    else if (ind.trend === 'up-partial') trendBadge = '<span class="trend-pill up">↗ Above 50MA</span>';
+    else if (ind.trend === 'down') trendBadge = '<span class="trend-pill down">↘ Trend DOWN</span>';
+    else if (ind.trend === 'down-partial') trendBadge = '<span class="trend-pill down">↘ Below 50MA</span>';
+    else trendBadge = '<span class="trend-pill neutral">→ Neutral</span>';
+  }
+
+  const a = ch24(coin), w = ch7(coin), m = ch30(coin);
+  const confCount = confluenceCount(coin);
+  const volText = ind && !ind.error && ind.dailyVol != null ? `~${ind.dailyVol.toFixed(1)}% / day` : '—';
+  const w7Display = has7d(coin) ? `${w >= 0 ? '+' : ''}${w.toFixed(2)}%` : '—';
+  const m30Display = has30d(coin) ? `${m >= 0 ? '+' : ''}${m.toFixed(2)}%` : '—';
+
+  const roomCheck = hasRoomToRun(coin);
+  const roomText = !roomCheck ? '—' : roomCheck.pass ? '✅ Yes' : '❌ ' + roomCheck.label;
+  const roomColor = !roomCheck ? 'var(--muted)' : roomCheck.pass ? 'var(--green)' : 'var(--red)';
+
+  const verdictText = verdict.verdict === 'TRADE' ? '✅ TRADE' : verdict.verdict === 'SKIP' ? '❌ SKIP' : '⏳ WAIT';
+  const verdictColor = verdict.verdict === 'TRADE' ? 'var(--green)' : verdict.verdict === 'SKIP' ? 'var(--red)' : 'var(--muted)';
+
+  $('dStats').innerHTML = `
+    <div class="block">
+      <div class="bd-row"><span class="k">Verdict</span><span class="v" style="color:${verdictColor}">${verdictText}</span></div>
+      <div style="margin:10px 0">${tags.join('')}${trendBadge}</div>
+      <div class="bd-row"><span class="k">24h change</span><span class="v ${a >= 0 ? 'up' : 'down'}">${a >= 0 ? '+' : ''}${a.toFixed(2)}%</span></div>
+      <div class="bd-row"><span class="k">7d change</span><span class="v ${has7d(coin) ? (w >= 0 ? 'up' : 'down') : ''}">${w7Display}</span></div>
+      <div class="bd-row"><span class="k">30d change</span><span class="v ${has30d(coin) ? (m >= 0 ? 'up' : 'down') : ''}">${m30Display}</span></div>
+      <div class="bd-row"><span class="k">Daily volatility</span><span class="v">${volText}</span></div>
+      <div class="bd-row"><span class="k">Volume rank</span><span class="v">#${coin.market_cap_rank ?? '—'}</span></div>
+      <div class="bd-row"><span class="k">Volume (24h)</span><span class="v">${money(coin.total_volume)}</span></div>
+      <div class="bd-row"><span class="k">Confluence signals</span><span class="v" style="color:${confCount >= 3 ? 'var(--green)' : '#fbbf24'}">${confCount} of 4</span></div>
+      <div class="bd-row"><span class="k">Confluence score</span><span class="v" style="color:${scoreColor(s)}">${s} / 100</span></div>
+      <div class="bd-row"><span class="k">Estimated win chance</span><span class="v" style="color:${chanceColor(chance)}">${chance}%</span></div>
+      <div class="bd-row"><span class="k">Expected value / $1 risked</span><span class="v" style="color:${ev >= 0 ? 'var(--green)' : 'var(--red)'}">${ev >= 0 ? '+' : ''}$${ev.toFixed(2)}</span></div>
+      <div class="bd-row"><span class="k">Room to run</span><span class="v" style="color:${roomColor}">${roomText}</span></div>
+    </div>
+    ${structureBlockHTML(ind && !ind.error ? ind.structure : null)}`;
+}
+
+function cleanupDetailChart() {
+  if (currentChart) { try { currentChart.remove(); } catch(e) {} currentChart = null; currentChartSeries = null; currentVolumeSeries = null; }
+  currentDetailSymbol = null; currentDetailId = null;
+}
+function exitDetail(to = 'scan') {
+  if (!currentDetailSymbol) { switchView(to); return; }
+  if (detailPushedState) {
+    leavingDetailTo = to; detailPushedState = false;
+    try { history.back(); return; } catch (e) {}
+  }
+  cleanupDetailChart();
+  switchView(to);
+}
+function closeCoinDetail() { exitDetail('scan'); }
+function openJournalForDetailCoin() {
+  const sym = currentDetailSymbol;
+  if (detailPushedState) {
+    leavingDetailTo = 'journal'; detailPushedState = false;
+    try { history.back(); } catch (e) {}
+    if (leavingDetailTo === 'journal' && currentDetailSymbol) { cleanupDetailChart(); switchView('journal'); }
+    leavingDetailTo = null;
+  } else { cleanupDetailChart(); switchView('journal'); }
+  $('jCoin').value = sym || '';
+  autoFillTrade();
+}
+
+document.querySelectorAll('#periodTabs button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#periodTabs button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    currentPeriod = b.dataset.period;
+    const coin = findCoinLive(currentDetailSymbol, currentDetailId);
+    if (coin) loadChart(coin, currentPeriod);
+  });
+});
+$('detailBackBtn').addEventListener('click', closeCoinDetail);
+$('dLogTradeBtn').addEventListener('click', openJournalForDetailCoin);
+
+$('coinList').addEventListener('click', e => {
+  const star = e.target.closest('.star-btn');
+  if (star) {
+    e.stopPropagation();
+    const sym = star.dataset.symbol;
+    const nowWatched = toggleWatch(sym);
+    star.classList.toggle('watched', nowWatched);
+    star.textContent = nowWatched ? '★' : '☆';
+    showBanner(nowWatched ? `⭐ ${sym.toUpperCase()} added` : `Removed ${sym.toUpperCase()}`, 'info');
+    if (currentFilter === 'watchlist' && !nowWatched) renderCoinList();
+    else {
+      const wl = loadWatchlist();
+      const chipEl = document.querySelector('[data-filter="watchlist"]');
+      if (chipEl) chipEl.textContent = wl.length ? `⭐ Watchlist (${wl.length})` : '⭐ Watchlist';
+    }
+    return;
+  }
+  const card = e.target.closest('.coin-card');
+  if (card && card.dataset.symbol) openCoinDetail(card.dataset.symbol, card.dataset.id || null);
+});
+
+window.addEventListener('popstate', () => {
+  if (!currentDetailSymbol) return;
+  cleanupDetailChart();
+  const target = leavingDetailTo || 'scan';
+  leavingDetailTo = null;
+  switchView(target);
+});
+
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)));
+document.querySelectorAll('.chip').forEach(c => {
+  c.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
+    c.classList.add('active'); c.setAttribute('aria-pressed', 'true');
+    currentFilter = c.dataset.filter;
+    renderCoinList();
+  });
+});
+
+document.body.addEventListener('click', e => {
+  const head = e.target.closest('#verdictHead');
+  if (head) { verdictExpanded = !verdictExpanded; renderVerdict(); }
+});
+
+document.querySelectorAll('.tf-btn').forEach(btn => {
+  btn.classList.toggle('active', btn.dataset.tf === currentTimeframe);
+});
+document.querySelector('.tf-toggle')?.addEventListener('click', e => {
+  const btn = e.target.closest('.tf-btn');
+  if (!btn) return;
+  if (btn.dataset.tf === currentTimeframe) return;
+  document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentTimeframe = btn.dataset.tf;
+  safeSet(TIMEFRAME_KEY, currentTimeframe);
+  showBanner(`Timeframe: ${currentTimeframe.toUpperCase()} — loading hourly data…`, 'info');
+  renderCoinList();
+});
+
+$('search').addEventListener('input', renderCoinList);
+$('refreshBtn').addEventListener('click', fetchCrypto);
+$('jCoin').addEventListener('input', autoFillTrade);
+$('jSetup').addEventListener('change', autoFillTrade);
+
+function onAccountInput() {
+  saveSettings({ balance: parseFloat($('jBalance').value) || 0, riskPct: parseFloat($('jRiskPct').value) || 1 });
+  if ($('jCoin').value.trim()) autoFillTrade();
+  if (currentView === 'journal') renderPortfolioPanel(loadTrades());
+}
+$('jBalance').addEventListener('input', onAccountInput);
+$('jRiskPct').addEventListener('input', onAccountInput);
+function onRiskAccountInput() {
+  saveSettings({ balance: parseFloat($('cBalance').value) || 0, riskPct: parseFloat($('cRisk').value) || 1 });
+  calcRisk();
+}
+$('cBalance').addEventListener('input', onRiskAccountInput);
+$('cRisk').addEventListener('input', onRiskAccountInput);
+$('jAddBtn').addEventListener('click', addTrade);
+
+$('exportJournalBtn').addEventListener('click', () => {
+  try {
+    const data = { version: 1, exportedAt: new Date().toISOString(), trades: loadTrades(), settings: loadSettings(), alertSettings: loadAlertSettings(), watchlist: loadWatchlist() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `crypto-journal-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showBanner('✅ Exported', 'info');
+  } catch (e) { showBanner('⚠️ Export failed', 'warn'); }
+});
+$('importJournalBtn').addEventListener('click', () => { $('importFileInput').click(); });
+$('importFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data || !Array.isArray(data.trades)) throw new Error('Not a valid journal file');
+    const count = data.trades.length;
+    if (!confirm(`Import ${count} trade${count !== 1 ? 's' : ''}? REPLACES current journal.`)) { e.target.value = ''; return; }
+    safeSet(TRADES_KEY, data.trades);
+    if (data.settings) saveSettings(data.settings);
+    if (data.alertSettings) saveAlertSettings(data.alertSettings);
+    if (Array.isArray(data.watchlist)) saveWatchlist(data.watchlist);
+    syncAccountInputs();
+    renderJournal();
+    showBanner(`✅ Imported ${count} trade${count !== 1 ? 's' : ''}`, 'info');
+  } catch (err) { showBanner('⚠️ Import failed', 'warn'); }
+  finally { e.target.value = ''; }
+});
+
+$('pauseTradingBtn').addEventListener('click', () => {
+  if (!confirm('Pause trading for 24 hours?')) return;
+  activateCooldown(24, 'manual');
+  renderJournal();
+  showBanner('⏸️ Paused for 24h', 'info');
+});
+$('cooldownCancelBtn').addEventListener('click', () => { $('cooldownModal').classList.add('hidden'); });
+$('cooldownResumeInput').addEventListener('input', (e) => {
+  const ok = e.target.value.trim().toUpperCase() === 'I UNDERSTAND THE RISK';
+  const btn = $('cooldownConfirmBtn');
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '0.4';
+});
+$('cooldownConfirmBtn').addEventListener('click', () => {
+  const val = $('cooldownResumeInput').value.trim().toUpperCase();
+  if (val !== 'I UNDERSTAND THE RISK') return;
+  clearCooldown();
+  const dd = computeDrawdown(loadTrades());
+  safeSet(STREAK_ACK_KEY, dd.current);
+  $('cooldownModal').classList.add('hidden');
+  renderJournal();
+  showBanner('▶️ Cooldown cleared', 'info');
+});
+
+$('clearClosedBtn').addEventListener('click', () => {
+  bulkConfirmOpen = !bulkConfirmOpen;
+  editingTradeId = null; editDraft = null;
+  closingTradeId = null; deletingTradeId = null;
+  renderJournal();
+});
+$('bulkConfirmSlot').addEventListener('click', e => {
+  if (e.target.closest('.bulk-cancel')) { bulkConfirmOpen = false; renderJournal(); return; }
+  if (e.target.closest('.bulk-confirm-yes')) { clearClosedTrades(); return; }
+});
+
+function isInteractiveTarget(el) {
+  return !!el.closest('button, input, textarea, select, a, .actions, .close-form, .edit-form, .del-confirm');
+}
+
+$('journalList').addEventListener('click', e => {
+  const del = e.target.closest('.del');
+  if (del) {
+    const id = Number(del.dataset.id);
+    deletingTradeId = deletingTradeId === id ? null : id;
+    closingTradeId = null; editingTradeId = null; editDraft = null; bulkConfirmOpen = false;
+    renderJournal(); return;
+  }
+  const delCancel = e.target.closest('.del-cancel');
+  if (delCancel) { deletingTradeId = null; renderJournal(); return; }
+  const delYes = e.target.closest('.del-yes');
+  if (delYes) { deleteTrade(Number(delYes.dataset.id)); return; }
+  const closeBtn = e.target.closest('.close-btn');
+  if (closeBtn) {
+    closingTradeId = Number(closeBtn.dataset.id); closingExitValue = '';
+    deletingTradeId = null; editingTradeId = null; editDraft = null; bulkConfirmOpen = false;
+    renderJournal();
+    setTimeout(() => { const inp = document.querySelector('.close-exit-input'); if (inp) inp.focus(); }, 30);
+    return;
+  }
+  const closeCancel = e.target.closest('.close-cancel');
+  if (closeCancel) { closingTradeId = null; closingExitValue = ''; renderJournal(); return; }
+  const closeConfirm = e.target.closest('.close-confirm');
+  if (closeConfirm) { closeTradeManual(Number(closeConfirm.dataset.id)); return; }
+  const editBtn = e.target.closest('.edit-btn');
+  if (editBtn) { beginEditTrade(Number(editBtn.dataset.id)); return; }
+  const editCancel = e.target.closest('.edit-cancel');
+  if (editCancel) { cancelEditTrade(); return; }
+  const editSave = e.target.closest('.edit-save');
+  if (editSave) { saveEditedTrade(Number(editSave.dataset.id)); return; }
+
+  if (isInteractiveTarget(e.target)) return;
+  if (editingTradeId || closingTradeId || deletingTradeId) return;
+
+  const tradeItem = e.target.closest('.trade');
+  if (tradeItem) {
+    const id = Number(tradeItem.dataset.id);
+    const t = loadTrades().find(x => x.id === id);
+    if (t) openCoinFromJournal(t.coin, t.coinId);
+  }
+});
+
+$('journalList').addEventListener('input', e => {
+  const editInput = e.target.closest('.edit-field');
+  if (editInput && editDraft) { editDraft[editInput.dataset.field] = editInput.value; return; }
+  const closeInp = e.target.closest('.close-exit-input');
+  if (closeInp) { closingExitValue = closeInp.value; closeInp.style.borderColor = ''; }
+});
+$('journalList').addEventListener('change', e => {
+  const editInput = e.target.closest('.edit-field');
+  if (editInput && editDraft) editDraft[editInput.dataset.field] = editInput.value;
+});
+['enabled','sound','vibrate','notify','nearStop','nearTarget','onClose','onSetup'].forEach(k => {
+  const sw = $('sw_' + k);
+  if (!sw) return;
+  const toggle = () => {
+    const s = loadAlertSettings();
+    s[k] = !s[k];
+    saveAlertSettings(s);
+    sw.classList.toggle('on', s[k]);
+    sw.setAttribute('aria-checked', String(s[k]));
+    ensureAudio();
+  };
+  sw.addEventListener('click', toggle);
+  sw.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } });
+});
+$('nearThreshold').addEventListener('input', () => {
+  const raw = parseFloat($('nearThreshold').value);
+  const s = loadAlertSettings();
+  s.nearThreshold = isNaN(raw) ? 0.5 : Math.max(0, Math.min(5, raw));
+  saveAlertSettings(s);
+});
+$('grantPermBtn').addEventListener('click', async () => {
+  ensureAudio();
+  if (!('Notification' in window)) { alert('Not supported.'); return; }
+  try {
+    const p = await Notification.requestPermission();
+    updatePermStatus();
+    if (p === 'granted') pushNative('🔔 Alerts enabled', 'You will receive trade and setup alerts.', 'welcome');
+  } catch (e) { alert('Error: ' + e.message); }
+});
+$('testAlertBtn').addEventListener('click', () => { fireAlert('setup', '🔔 Test alert', 'If you see this, hear a tone, and get a phone notification, alerts work.', 'test'); });
+$('clearLogBtn').addEventListener('click', () => { if (!confirm('Clear alert history?')) return; saveAlertLog([]); renderAlertLog(); });
+$('cCalcBtn').addEventListener('click', calcRisk);
+$('cEntry').addEventListener('input', calcRisk);
+$('cStop').addEventListener('input', calcRisk);
+document.body.addEventListener('touchstart', ensureAudio, { once: true });
+document.body.addEventListener('click', ensureAudio, { once: true });
+
+currentTimeframe = safeGet(TIMEFRAME_KEY, '1d');
+if (currentTimeframe !== '1h' && currentTimeframe !== '1d') currentTimeframe = '1d';
+document.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.dataset.tf === currentTimeframe));
+
+syncAccountInputs();
+fetchCrypto();
+renderJournal();
+checkStreakCooldown();
+renderVerdict();
+
+setInterval(() => {
+  if (currentView === 'journal' && isCooldownActive()) renderCooldownPanel();
+  if (currentView === 'scan') renderVerdict();
+}, POLL_INTERVAL_MS);
+</script>
+</body>
+</html>
