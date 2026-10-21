@@ -1912,7 +1912,6 @@ async function autoCloseTrades({ silent = false } = {}) {
       applyTradePnlToBalance(t);
       if (s.onClose && !silent) fireAlert('win', `✅ ${t.coin} hit target`, `Profit +${money(t.pnl)}`, 'trade-' + t.coin);
     }
-
   }
 
   if (anyChanged) {
